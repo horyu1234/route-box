@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to (re)build assets for, e.g. v0.3.1'
+        required: true
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # 공급망 공격 방지를 위해 액션은 태그가 아니라 커밋 SHA 로 고정한다.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # shallow checkout 에서는 git describe 가 태그를 못 찾으므로 버전을 직접 넘긴다.
+      - name: build
+        run: make cross VERSION="$TAG"
+      - name: package
+        run: |
+          cd dist
+          for bin in routebox-*-*; do
+            platform="${bin#routebox-}"
+            mkdir -p "pkg-$platform"
+            cp "$bin" "pkg-$platform/routebox"
+            cp ../LICENSE "pkg-$platform/"
+            tar -C "pkg-$platform" -czf "routebox-$TAG-$platform.tar.gz" routebox LICENSE
+          done
+          sha256sum routebox-"$TAG"-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+      - name: check version stamp
+        run: ./dist/routebox-linux-amd64 --version | grep -F "$TAG"
+      - name: release
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "RouteBox $TAG" --notes-from-tag
+          gh release upload "$TAG" dist/routebox-"$TAG"-*.tar.gz dist/SHA256SUMS --clobber
