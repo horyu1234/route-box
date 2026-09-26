@@ -94,6 +94,22 @@ Or build from source ([Build](#5-build)). The result is a single static binary (
 
 If macOS Gatekeeper blocks a downloaded binary: `xattr -d com.apple.quarantine routebox`.
 
+### Updating
+
+1. Quit the running instance: `q` in the TUI, or `Ctrl+C` for `--no-tui`. `routebox status` should print `RouteBox   not running`.
+2. Optionally back up `config.json` ([Configuration](#13-configuration)).
+3. Replace the binary the same way you installed it:
+
+   ```sh
+   go install github.com/horyu1234/route-box/cmd/routebox@latest
+   # or, from a source checkout:
+   git pull && make build   # then copy bin/routebox over the old binary
+   ```
+
+4. Start `routebox` again. Routes and upstreams are kept in the config file, and configs from older versions are migrated when loaded.
+
+`routebox --version` shows the version for `make build` binaries (from `git describe`); `go install` builds report `dev`.
+
 ## 5. Build
 
 ```sh

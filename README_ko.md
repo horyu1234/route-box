@@ -94,6 +94,22 @@ go install github.com/horyu1234/route-box/cmd/routebox@latest
 
 macOS Gatekeeper 가 내려받은 바이너리를 막으면 `xattr -d com.apple.quarantine routebox`.
 
+### 업데이트
+
+1. 실행 중인 인스턴스를 종료합니다. TUI 는 `q`, `--no-tui` 는 `Ctrl+C`. `routebox status` 가 `RouteBox   not running` 을 출력하면 됩니다.
+2. 필요하면 `config.json` 을 백업합니다([설정](#13-설정)).
+3. 설치했던 방법 그대로 바이너리를 교체합니다.
+
+   ```sh
+   go install github.com/horyu1234/route-box/cmd/routebox@latest
+   # 또는 소스 체크아웃에서:
+   git pull && make build   # 이후 bin/routebox 로 기존 바이너리를 덮어씁니다
+   ```
+
+4. `routebox` 를 다시 실행합니다. 라우트와 업스트림은 설정 파일에 그대로 남아 있고, 예전 버전의 설정은 읽을 때 새 형식으로 옮겨집니다.
+
+`routebox --version` 은 `make build` 로 만든 바이너리에서 버전(`git describe` 값)을 보여 줍니다. `go install` 로 설치하면 `dev` 로 표시됩니다.
+
 ## 5. 빌드
 
 ```sh
