@@ -11,10 +11,11 @@ Point your browser at `127.0.0.1:8080` once. From then on, you decide in a termi
  Selective Tunnel Router                                          listening on 127.0.0.1:8080
 ╭──────────────────────────────────────────╮╭──────────────────────────────────────────────────╮
 │ ROUTES 4                                 ││ LIVE CONNECTIONS live                            │
-│ ▌● example.com                   → seoul ││ 16:30:01 seoul    www.example.com:443   ● open   │
-│  ● example.org                   → tokyo ││ 16:30:01 tokyo    cdn.example.org:443   ✓ 2.0s   │
-│  ● 203.0.113.10                    → lab ││ 16:30:02 DIRECT   intranet.example.com  ✓ 1.2s   │
-│  ○ intranet.example.com           DIRECT ││ 16:30:03 lab      203.0.113.10:443      ● open   │
+│ ▌● example.com              → seoul   52 ││ 16:30:01 seoul    www.example.com:443   ● open   │
+│  ● example.org              → tokyo   27 ││ 16:30:01 tokyo    cdn.example.org:443   ✓ 2.0s   │
+│  ● 203.0.113.10               → lab    1 ││ 16:30:02 DIRECT   intranet.example.com  ✓ 1.2s   │
+│  ○ intranet.example.com      DIRECT    7 ││ 16:30:03 lab      203.0.113.10:443      ● open   │
+│  ○ everything else           DIRECT   31 ││ 16:30:04 DIRECT   example.net:443       ✓ 0.3s   │
 │  + Add Route                             ││                                                  │
 ╰──────────────────────────────────────────╯╰──────────────────────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────────────────────╮
@@ -25,6 +26,15 @@ Point your browser at `127.0.0.1:8080` once. From then on, you decide in a termi
 ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
  [a] add  [v] via  [e] edit  [d] delete  [s] upstreams  [p] preset  [r] restart  [?] help  [q] quit
 ```
+
+## Quick start
+
+```sh
+brew install horyu1234/tap/routebox
+routebox          # the first run walks you through adding an upstream (SSH host or SOCKS5 server)
+```
+
+Then set your browser's HTTP **and** HTTPS proxy to `127.0.0.1:8080` ([Firefox setup](#6-firefox-setup)), add routes with `a`, and keep it running at login with `routebox service install` ([Run in the background](#run-in-the-background)). Other ways to install: [Install](#4-install).
 
 ## Contents
 
@@ -84,23 +94,40 @@ RouteBox 127.0.0.1:8080 ── route lookup: example.com → via seoul
 
 ## 4. Install
 
-With [Homebrew](https://brew.sh) (macOS, Linux), from the [horyu1234/tap](https://github.com/horyu1234/homebrew-tap) tap. It builds the tagged release from source, so there is no unsigned download for Gatekeeper to block:
+### Homebrew (recommended)
+
+On macOS and Linux (Apple Silicon, Intel, arm64, x86_64):
 
 ```sh
 brew install horyu1234/tap/routebox
 ```
 
-With Go (see `go.mod` for the required version), install the latest release tag:
+This installs the prebuilt binary from the [latest release](https://github.com/horyu1234/route-box/releases/latest) through the [horyu1234/tap](https://github.com/horyu1234/homebrew-tap) tap. Go is not needed. Homebrew does not quarantine formula downloads, and the macOS binaries are ad-hoc signed, so Gatekeeper does not get in the way. Update with `brew upgrade routebox`.
+
+### Prebuilt binary
+
+Each [release](https://github.com/horyu1234/route-box/releases/latest) has `routebox-vX.Y.Z-<os>-<arch>.tar.gz` for `darwin`/`linux` × `arm64`/`amd64`, plus `SHA256SUMS`. Unpack it and put `routebox` anywhere on your `PATH`:
+
+```sh
+tar -xzf routebox-v0.3.1-darwin-arm64.tar.gz
+sudo install routebox /usr/local/bin/
+```
+
+If macOS blocks a file downloaded with a browser: `xattr -d com.apple.quarantine routebox`.
+
+### Go
+
+With Go (see `go.mod` for the required version), name the release tag:
 
 ```sh
 go install github.com/horyu1234/route-box/cmd/routebox@v0.3.1
 ```
 
-Always name the tag: `@latest` goes through the Go module proxy, which can keep serving the previous version for a while after a release. Newer releases are listed on the [tags page](https://github.com/horyu1234/route-box/tags); `routebox --version` prints the one you have.
+Always name the tag: `@latest` goes through the Go module proxy, which can keep serving the previous version for a while after a release.
 
-Or build from source ([Build](#5-build)). The result is a single static binary (`CGO_ENABLED=0`); copy it anywhere on your `PATH`.
+### From source
 
-If macOS Gatekeeper blocks a downloaded binary: `xattr -d com.apple.quarantine routebox`.
+See [Build](#5-build). The result is a single static binary (`CGO_ENABLED=0`).
 
 ### Run in the background
 

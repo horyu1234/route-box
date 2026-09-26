@@ -11,10 +11,11 @@
  선택적 터널 라우터                                                  대기 주소 127.0.0.1:8080
 ╭──────────────────────────────────────────╮╭──────────────────────────────────────────────────╮
 │ 라우트 4                                 ││ 실시간 연결 실시간                               │
-│ ▌● example.com                   → seoul ││ 16:30:01 seoul    www.example.com:443   ● open   │
-│  ● example.org                   → tokyo ││ 16:30:01 tokyo    cdn.example.org:443   ✓ 2.0s   │
-│  ● 203.0.113.10                    → lab ││ 16:30:02 DIRECT   intranet.example.com  ✓ 1.2s   │
-│  ○ intranet.example.com           DIRECT ││ 16:30:03 lab      203.0.113.10:443      ● open   │
+│ ▌● example.com              → seoul   52 ││ 16:30:01 seoul    www.example.com:443   ● open   │
+│  ● example.org              → tokyo   27 ││ 16:30:01 tokyo    cdn.example.org:443   ✓ 2.0s   │
+│  ● 203.0.113.10               → lab    1 ││ 16:30:02 DIRECT   intranet.example.com  ✓ 1.2s   │
+│  ○ intranet.example.com      DIRECT    7 ││ 16:30:03 lab      203.0.113.10:443      ● open   │
+│  ○ 그 외 전부                DIRECT   31 ││ 16:30:04 DIRECT   example.net:443       ✓ 0.3s   │
 │  + 라우트 추가                           ││                                                  │
 ╰──────────────────────────────────────────╯╰──────────────────────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────────────────────╮
@@ -25,6 +26,15 @@
 ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
  [a] 추가  [v] 경로  [e] 편집  [d] 삭제  [s] 업스트림  [p] preset  [r] 재시작  [?] 도움말  [q] 종료
 ```
+
+## 빠른 시작
+
+```sh
+brew install horyu1234/tap/routebox
+routebox          # 처음 실행하면 업스트림(SSH 서버 또는 SOCKS5 서버) 추가를 안내합니다
+```
+
+그다음 브라우저의 HTTP와 HTTPS 프록시를 **둘 다** `127.0.0.1:8080`으로 맞추고([Firefox 설정](#6-firefox-설정)), `a`로 라우트를 추가하세요. 로그인할 때 자동으로 켜 두려면 `routebox service install`([백그라운드 실행](#백그라운드-실행)). 다른 설치 방법은 [설치](#4-설치)를 보세요.
 
 ## 목차
 
@@ -84,23 +94,40 @@ RouteBox 127.0.0.1:8080 ── 라우트 조회: example.com → via seoul
 
 ## 4. 설치
 
-[Homebrew](https://brew.sh)(macOS, Linux)가 있으면 [horyu1234/tap](https://github.com/horyu1234/homebrew-tap)에서 설치합니다. 태그된 릴리스를 소스에서 빌드하므로 Gatekeeper가 막을 서명 안 된 다운로드가 없습니다.
+### Homebrew (권장)
+
+macOS와 Linux(Apple Silicon, Intel, arm64, x86_64)에서:
 
 ```sh
 brew install horyu1234/tap/routebox
 ```
 
-Go가 있으면(필요한 버전은 `go.mod` 참고) 최신 릴리스 태그를 지정해 설치합니다.
+[horyu1234/tap](https://github.com/horyu1234/homebrew-tap)을 통해 [최신 릴리스](https://github.com/horyu1234/route-box/releases/latest)의 미리 빌드된 바이너리를 설치합니다. Go가 없어도 됩니다. Homebrew는 formula 다운로드에 quarantine을 붙이지 않고 macOS 바이너리는 ad-hoc 서명돼 있어서 Gatekeeper에 막히지 않습니다. 업데이트는 `brew upgrade routebox`.
+
+### 미리 빌드된 바이너리
+
+각 [릴리스](https://github.com/horyu1234/route-box/releases/latest)에 `darwin`/`linux` × `arm64`/`amd64`용 `routebox-vX.Y.Z-<os>-<arch>.tar.gz`와 `SHA256SUMS`가 있습니다. 풀어서 `routebox`를 `PATH` 안 아무 곳에 두면 됩니다.
+
+```sh
+tar -xzf routebox-v0.3.1-darwin-arm64.tar.gz
+sudo install routebox /usr/local/bin/
+```
+
+브라우저로 받은 파일을 macOS가 막으면 `xattr -d com.apple.quarantine routebox`.
+
+### Go
+
+Go가 있으면(필요한 버전은 `go.mod` 참고) 릴리스 태그를 지정해 설치합니다.
 
 ```sh
 go install github.com/horyu1234/route-box/cmd/routebox@v0.3.1
 ```
 
-태그는 항상 직접 지정하세요. `@latest`는 Go 모듈 프록시를 거치는데, 프록시는 새 버전을 낸 뒤에도 한동안 예전 버전을 줄 수 있습니다. 새 릴리스는 [태그 목록](https://github.com/horyu1234/route-box/tags)에서 확인하고, 설치된 버전은 `routebox --version`으로 봅니다.
+태그는 항상 직접 지정하세요. `@latest`는 Go 모듈 프록시를 거치는데, 프록시는 새 버전을 낸 뒤에도 한동안 예전 버전을 줄 수 있습니다.
 
-또는 소스에서 빌드합니다([빌드](#5-빌드)). 결과물은 정적 단일 바이너리(`CGO_ENABLED=0`)라 `PATH` 어디에 복사해도 됩니다.
+### 소스에서 빌드
 
-macOS Gatekeeper가 내려받은 바이너리를 막으면 `xattr -d com.apple.quarantine routebox`.
+[빌드](#5-빌드)를 참고하세요. 결과물은 정적 단일 바이너리(`CGO_ENABLED=0`)입니다.
 
 ### 백그라운드 실행
 

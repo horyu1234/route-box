@@ -25,4 +25,4 @@
 - Pin GitHub Actions by commit SHA
 - README.md (English) and README_ko.md (Korean) must stay in sync
 - Korean text (ko.go, README_ko.md) attaches particles to Latin words and code: `RouteBox가`, `` `q`는 ``, `%s에`
-- Releases: tag `vX.Y.Z` on main and bump the `go install …@vX.Y.Z` lines in both READMEs in the tagged commit (`@latest` lags behind the module proxy); push the tag only after CI passes on main, then update `url`/`sha256` in `../homebrew-tap/Formula/routebox.rb` (github.com/horyu1234/homebrew-tap) and run `brew audit --strict --online` + `brew test`
+- Releases: bump every `vX.Y.Z` in both READMEs (`go install …@`, the release tarball example, `--version` example) in a `Release vX.Y.Z` commit; push main, wait for CI, then push the tag. `.github/workflows/release.yml` builds the per-platform tarballs + `SHA256SUMS` onto the GitHub release (`gh workflow run release.yml -f tag=vX.Y.Z` rebuilds). Then bump the four `url`/`sha256` pairs in `../homebrew-tap/Formula/routebox.rb` (github.com/horyu1234/homebrew-tap) from `SHA256SUMS` and run `brew audit --strict --online` + `brew reinstall` + `brew test`
