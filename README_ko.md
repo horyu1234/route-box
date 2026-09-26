@@ -87,7 +87,7 @@ RouteBox 127.0.0.1:8080 ── 라우트 조회: example.com → via seoul
 Go가 있으면(필요한 버전은 `go.mod` 참고) 최신 릴리스 태그를 지정해 설치합니다.
 
 ```sh
-go install github.com/horyu1234/route-box/cmd/routebox@v0.2.0
+go install github.com/horyu1234/route-box/cmd/routebox@v0.3.0
 ```
 
 태그는 항상 직접 지정하세요. `@latest`는 Go 모듈 프록시를 거치는데, 프록시는 새 버전을 낸 뒤에도 한동안 예전 버전을 줄 수 있습니다. 새 릴리스는 [태그 목록](https://github.com/horyu1234/route-box/tags)에서 확인하고, 설치된 버전은 `routebox --version`으로 봅니다.
@@ -126,14 +126,14 @@ routebox service uninstall   # 멈추고 로그인 항목에서 제거
 3. 설치했던 방법 그대로 바이너리를 교체합니다. [태그 목록](https://github.com/horyu1234/route-box/tags)에서 새 태그를 확인해 지정합니다.
 
    ```sh
-   go install github.com/horyu1234/route-box/cmd/routebox@v0.2.0
+   go install github.com/horyu1234/route-box/cmd/routebox@v0.3.0
    # 또는 소스 체크아웃에서:
    git pull && make build   # 이후 bin/routebox로 기존 바이너리를 덮어씁니다
    ```
 
 4. `routebox`를 다시 실행합니다. 백그라운드 서비스라면 `routebox service restart`를 실행합니다(재시작 전까지는 예전 바이너리가 계속 돕니다). 라우트와 업스트림은 설정 파일에 그대로 남아 있고, 예전 버전의 설정은 읽을 때 새 형식으로 옮겨집니다.
 
-`routebox --version`은 설치된 버전을 보여 줍니다. `go install`이면 모듈 버전(예: `v0.2.0`), `make build`면 `git describe` 값입니다.
+`routebox --version`은 설치된 버전을 보여 줍니다. `go install`이면 모듈 버전(예: `v0.3.0`), `make build`면 `git describe` 값입니다.
 
 ## 5. 빌드
 
