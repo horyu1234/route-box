@@ -178,6 +178,18 @@ func TestRemoteMirrorsRunningInstance(t *testing.T) {
 	if err := r.SetLanguage("ko"); err != nil || r.Config().Language != "ko" {
 		t.Fatalf("language: %v %q", err, r.Config().Language)
 	}
+	if via, err := r.SetFallback("direct"); err != nil || via != "direct" || r.Status().Fallback != "direct" {
+		t.Fatalf("fallback: %q %v", via, err)
+	}
+	if err := r.SetConnectionLog(false); err != nil || r.Status().ConnectionLog || app.Status().ConnectionLog {
+		t.Fatalf("connection log off: %v", err)
+	}
+	if err := r.SetConnectionLog(true); err != nil || !r.Status().ConnectionLog {
+		t.Fatalf("connection log on: %v", err)
+	}
+	if err := r.ClearConnections(); err != nil || len(r.RecentConnections()) != 0 {
+		t.Fatalf("clear: %v %+v", err, r.RecentConnections())
+	}
 	if err := r.RemoveUpstream("nope"); !errors.Is(err, core.ErrUpstreamMissing) {
 		t.Fatalf("sentinel lost over the socket: %v", err)
 	}

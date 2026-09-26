@@ -177,6 +177,16 @@ func (r *Remote) TrustHostKey(name, fingerprint string) error {
 	return err
 }
 
+func (r *Remote) ClearConnections() error {
+	_, err := after(r, func(ctx context.Context) (struct{}, error) { return struct{}{}, r.c.ClearConnections(ctx) })
+	return err
+}
+
+func (r *Remote) SetConnectionLog(on bool) error {
+	_, err := after(r, func(ctx context.Context) (struct{}, error) { return struct{}{}, r.c.SetConnectionLog(ctx, on) })
+	return err
+}
+
 func (r *Remote) SetFallback(via string) (string, error) {
 	return after(r, func(ctx context.Context) (string, error) { return r.c.SetFallback(ctx, via) })
 }

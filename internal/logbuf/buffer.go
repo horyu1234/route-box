@@ -55,6 +55,14 @@ func (r *Ring[T]) Snapshot() []T {
 	return out
 }
 
+// Clear 는 모든 항목을 버린다.
+func (r *Ring[T]) Clear() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	clear(r.buf)
+	r.start, r.n = 0, 0
+}
+
 func (r *Ring[T]) Len() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()

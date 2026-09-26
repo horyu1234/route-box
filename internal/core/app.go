@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/horyu1234/route-box/internal/config"
@@ -76,6 +77,9 @@ type App struct {
 	conns     *logbuf.Ring[events.ConnectionEvent]
 	healthNow chan struct{}
 	upWG      sync.WaitGroup
+	// connLogOff 는 config.ConnectionLogOff 의 사본이다. 연결마다 config 를
+	// 복사하지 않도록 따로 들고 있는다.
+	connLogOff atomic.Bool
 
 	mu            sync.Mutex
 	socksOverride string
@@ -120,6 +124,7 @@ func New(opts Options) *App {
 		pendingKeys:   map[string]ssh.HostKey{},
 	}
 	a.router.SetFallback(cfg.Fallback)
+	a.connLogOff.Store(cfg.ConnectionLogOff)
 	a.transport = proxy.NewTransport(opts.Direct, nil)
 	a.syncUpstreams(cfg)
 	return a
@@ -169,6 +174,9 @@ func (a *App) Subscribe(buffer int) (<-chan events.Event, func()) {
 
 func (a *App) publish(e events.Event) {
 	if ce, ok := e.(events.ConnectionEvent); ok {
+		if a.connLogOff.Load() {
+			return
+		}
 		if ce.State == events.ConnOpen || !a.conns.Update(
 			func(x events.ConnectionEvent) bool { return x.ID == ce.ID },
 			func(x *events.ConnectionEvent) { *x = ce },
@@ -422,6 +430,27 @@ func (a *App) SSHLog(name string) []string {
 }
 
 func (a *App) RecentConnections() []events.ConnectionEvent { return a.conns.Snapshot() }
+
+// ClearConnections 는 지금까지 기록한 연결을 지운다. 로컬에서는 실패하지 않지만
+// control.Remote 와 같은 모양이 되도록 error 를 돌려준다.
+func (a *App) ClearConnections() error {
+	a.conns.Clear()
+	return nil
+}
+
+// SetConnectionLog 는 연결 기록을 켜거나 끄고 저장한다. 꺼도 이미 기록된 항목은
+// 지우지 않는다.
+func (a *App) SetConnectionLog(on bool) error {
+	_, err := a.store.Update(func(c *config.Config) error {
+		c.ConnectionLogOff = !on
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	a.connLogOff.Store(!on)
+	return nil
+}
 
 // ScanHostKey 는 managed 업스트림 서버의 host key 를 받아 와 사용자가 확인하도록
 // 돌려준다. 이 프로세스(서비스로 돌 때는 데몬)의 ssh 환경에서 실행된다.

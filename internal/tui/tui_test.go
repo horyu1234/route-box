@@ -224,6 +224,24 @@ func TestEverythingElseRowCyclesFallback(t *testing.T) {
 	}
 }
 
+func TestConnectionLogKeys(t *testing.T) {
+	m := newModel(t, twoUpstreams)
+	m.conns = []events.ConnectionEvent{{Time: time.Now(), Host: "cdn.example.com", Port: "443", State: events.ConnOpen}}
+	m = press(t, m, "c")
+	if len(m.conns) != 0 || strings.Contains(plain(m.View()), "cdn.example.com") {
+		t.Fatal("c did not clear the log")
+	}
+	m = press(t, m, "o")
+	v := plain(m.View())
+	if m.app.Status().ConnectionLog || !strings.Contains(v, "LIVE CONNECTIONS off") || !strings.Contains(v, "Press o to turn it back on.") {
+		t.Fatalf("o did not turn the log off:\n%s", v)
+	}
+	m = press(t, m, "o")
+	if !m.app.Status().ConnectionLog || !strings.Contains(plain(m.View()), "LIVE CONNECTIONS live") {
+		t.Fatal("o did not turn the log back on")
+	}
+}
+
 func TestDeleteRouteWithConfirmation(t *testing.T) {
 	m := newModel(t, func(c *config.Config) {
 		twoUpstreams(c)

@@ -16,6 +16,21 @@ func TestRingEvictsOldest(t *testing.T) {
 	}
 }
 
+func TestRingClear(t *testing.T) {
+	r := New[int](3)
+	for i := 1; i <= 5; i++ {
+		r.Push(i)
+	}
+	r.Clear()
+	if r.Len() != 0 || len(r.Snapshot()) != 0 {
+		t.Fatalf("after clear: %v", r.Snapshot())
+	}
+	r.Push(9)
+	if got := r.Snapshot(); !slices.Equal(got, []int{9}) {
+		t.Fatalf("after clear and push: %v", got)
+	}
+}
+
 func TestRingUpdateNewestMatch(t *testing.T) {
 	r := New[int](4)
 	for _, v := range []int{1, 2, 1, 3} {

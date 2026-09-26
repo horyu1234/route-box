@@ -288,6 +288,8 @@ routebox --preset <이름>        # 시작하면서 추가
 | `s` | 업스트림 관리 (`a` 추가, `e` 편집, `d` 삭제, `r` 재시작, `t` 호스트 키 확인) |
 | `r` | 모든 업스트림 재시작 |
 | `l` | 로그 표시/숨김 (좁은 화면에서는 라우트 ↔ 로그 전환) |
+| `c` | 연결 기록 지우기 |
+| `o` | 연결 기록 끄기/켜기, 설정에 저장 |
 | `L` | 언어 전환 (English ↔ 한국어), 설정에 저장 |
 | `g` / `G` | 맨 위 / 맨 아래 |
 | `?` | 도움말 |
@@ -323,6 +325,8 @@ routebox preset list
 routebox preset add <이름> --via seoul
 
 routebox status                            # --json, 실행 중이 아니면 종료 코드 1
+routebox log off|on                        # 연결 기록 중지 / 재개 (저장됨)
+routebox log clear                         # 지금까지 기록한 연결 지우기
 routebox ssh status [업스트림]             # 상태 + 최근 ssh stderr
 routebox ssh restart [업스트림]
 routebox ssh trust <업스트림>              # 호스트 키 지문을 보여 주고, 확인하면 저장
@@ -360,11 +364,13 @@ CLI와 TUI는 같은 코어(`internal/core`)를 씁니다. RouteBox가 실행 �
     { "domain": "203.0.113.10", "mode": "proxy", "upstream": "lab" },
     { "domain": "intranet.example.com", "mode": "direct" }
   ],
-  "fallback": "seoul"
+  "fallback": "seoul",
+  "connection_log_off": false
 }
 ```
 
 - `fallback`은 어떤 라우트에도 매칭되지 않은 트래픽이 나갈 업스트림입니다. 생략하거나 `"direct"`로 두면 직접 연결합니다.
+- `connection_log_off: true`면 연결을 기록하지 않습니다(TUI의 `o`, `routebox log off`). 트래픽 통계와 hit 수는 계속 셉니다.
 - `user`/`port`/`identity_file`를 생략하면 `~/.ssh/config`를 따릅니다. `"port": 22`를 적으면 `-p 22`를 넘겨 그 값을 덮어씁니다.
 - 변경은 즉시 저장되며 **atomic write**입니다. 같은 디렉터리의 임시 파일에 쓰고 fsync 한 뒤 rename 합니다. 파일은 `0600`, 디렉터리는 `0700`입니다.
 - 설정을 읽지 못하면 RouteBox는 **원본을 지우거나 덮어쓰지 않습니다.** TUI는 오류를 보여 주고, 안전한 기본값으로 계속하기를 고르면 먼저 `config.json.bak-YYYYMMDD-HHMMSS`로 백업합니다. `--no-tui`와 CLI는 오류를 출력하고 종료합니다.
@@ -411,6 +417,7 @@ CLI와 TUI는 같은 코어(`internal/core`)를 씁니다. RouteBox가 실행 �
 - `-`로 시작하는 ssh 호스트·사용자는 거부하고, 호스트 앞에 `--`를 넣어 옵션 주입을 막습니다.
 - 설정 파일(`0600`)과 제어 소켓(`0700` 디렉터리 안의 `0600`)은 본인 계정만 접근할 수 있습니다. 제어 소켓을 쓸 수 있으면 RouteBox를 조종할 수 있으므로 TCP로는 열지 않습니다.
 - macOS 백그라운드 서비스는 모든 연결의 `host:port`를 `~/Library/Logs/RouteBox/routebox.log` (`0600`, 10 MB에서 교체, 백업 하나)에 기록합니다. `routebox service uninstall`은 로그를 지우지 않으므로, 서비스를 그만 쓰면 폴더를 직접 지우세요.
+- 어디에 접속했는지 남기고 싶지 않다면 연결 기록을 끄세요(TUI의 `o` 또는 `routebox log off`). 그러면 RouteBox는 TUI, 제어 소켓, `--no-tui`·`--log-file`·서비스 로그 어디에도 연결을 기록하지 않고 개수만 셉니다. `c`나 `routebox log clear`는 메모리에 있는 기록을 지웁니다(로그 파일은 건드리지 않음).
 - 알아둘 점: 프록시를 우회하는 브라우저 기능(DNS-over-HTTPS, 프리페치)과 프록시 설정을 무시하는 앱은 RouteBox를 거치지 않습니다. WebRTC 같은 UDP 트래픽은 HTTP 프록시로 전달되지 않습니다.
 
 ## 16. 아키텍처

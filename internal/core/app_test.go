@@ -216,6 +216,48 @@ func TestFallbackFollowsUpstreamAndBlocksRemoval(t *testing.T) {
 	}
 }
 
+func TestConnectionLogOffAndClear(t *testing.T) {
+	a := newApp(t, nil)
+	sub, unsub := a.Subscribe(16)
+	defer unsub()
+	conn := func(id uint64) events.ConnectionEvent {
+		return events.ConnectionEvent{ID: id, Host: "example.com", Port: "443", State: events.ConnOpen}
+	}
+	a.publish(conn(1))
+	if len(a.RecentConnections()) != 1 || !a.Status().ConnectionLog {
+		t.Fatal("connection not recorded while the log is on")
+	}
+	<-sub
+
+	if err := a.SetConnectionLog(false); err != nil {
+		t.Fatal(err)
+	}
+	a.publish(conn(2))
+	a.publish(events.Notice{Message: "still delivered"})
+	if got := a.RecentConnections(); len(got) != 1 || got[0].ID != 1 {
+		t.Fatalf("recorded while off: %+v", got)
+	}
+	if e := <-sub; e != (events.Notice{Message: "still delivered"}) {
+		t.Fatalf("a connection event reached subscribers while off: %+v", e)
+	}
+	if a.Status().ConnectionLog {
+		t.Fatal("status still says the log is on")
+	}
+	disk, err := config.Load(a.ConfigPath())
+	if err != nil || !disk.ConnectionLogOff {
+		t.Fatalf("off not saved: %v", err)
+	}
+	if err := a.ClearConnections(); err != nil || len(a.RecentConnections()) != 0 {
+		t.Fatalf("clear: %v %+v", err, a.RecentConnections())
+	}
+
+	b := newApp(t, func(c *config.Config) { c.ConnectionLogOff = true })
+	b.publish(conn(3))
+	if len(b.RecentConnections()) != 0 || b.Status().ConnectionLog {
+		t.Fatal("connection_log_off from the config file was ignored")
+	}
+}
+
 func TestFallbackFromConfigAppliesAtStart(t *testing.T) {
 	a := newApp(t, func(c *config.Config) {
 		c.Upstreams = []config.Upstream{external("seoul", "127.0.0.1:1080")}

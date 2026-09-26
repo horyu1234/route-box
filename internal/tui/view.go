@@ -90,6 +90,8 @@ func (m Model) helpDetails() []components.HelpEntry {
 		{Key: "s", Desc: m.t("manage upstreams (SSH hosts / SOCKS servers)")},
 		{Key: "r", Desc: m.t("restart all upstreams")},
 		{Key: "l", Desc: m.t("show / hide the connection log")},
+		{Key: "c", Desc: m.t("clear the connection log")},
+		{Key: "o", Desc: m.t("turn connection logging off / on")},
 		{Key: "L", Desc: m.t("switch language (English / 한국어)")},
 		{Key: "g / G", Desc: m.t("jump to top / bottom")},
 		{Key: "q, ctrl+c", Desc: quit},
@@ -157,12 +159,16 @@ func (m Model) bodyView(lay layout) string {
 	}
 	if lay.logsShown {
 		focused := m.focus == focusLogs || !lay.routesShown
+		off := !m.status.ConnectionLog
 		extra := m.t("live")
-		if !m.logView.Following() {
+		switch {
+		case off:
+			extra = m.t("off")
+		case !m.logView.Following():
 			extra = m.t("paused · %d newer", m.logView.Offset)
 		}
 		title := components.PanelTitle(m.t("Live Connections"), focused, extra)
-		lines := m.logView.View(m.conns, lay.logsW-4, lay.bodyH-3, m.lang)
+		lines := m.logView.View(m.conns, off, lay.logsW-4, lay.bodyH-3, m.lang)
 		cols = append(cols, components.Panel(title, lines, lay.logsW, lay.bodyH, focused))
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, cols...)

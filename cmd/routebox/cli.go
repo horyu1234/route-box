@@ -58,6 +58,7 @@ management panel and quitting the panel leaves RouteBox running.`,
 		newPresetCmd(&configPath),
 		newSSHCmd(&configPath),
 		newStatusCmd(&configPath),
+		newLogCmd(&configPath),
 		newServiceCmd(&configPath),
 	)
 	return root
@@ -715,6 +716,9 @@ func newStatusCmd(configPath *string) *cobra.Command {
 				components.HumanBytes(st.Stats.RX), components.HumanBytes(st.Stats.TX))
 			fmt.Fprintf(out, "Routes     %d (%d direct)\n", st.Routes, st.Direct)
 			fmt.Fprintf(out, "Unmatched  → %s (%d hits)\n", fallbackLabel(st.Fallback), st.FallbackHits)
+			if !st.ConnectionLog {
+				fmt.Fprintln(out, "Log        off (turn on with: routebox log on)")
+			}
 			fmt.Fprintf(out, "Config     %s\n", ld.path)
 			if len(st.Upstreams) > 0 {
 				fmt.Fprintln(out)
@@ -736,6 +740,58 @@ func newStatusCmd(configPath *string) *cobra.Command {
 }
 
 // runningClient 는 실행 중인 인스턴스의 client 를, 없으면 nil 을 돌려준다.
+func newLogCmd(configPath *string) *cobra.Command {
+	logCmd := &cobra.Command{Use: "log", Short: "Turn the connection log on or off, or clear it"}
+	toggle := func(on bool) *cobra.Command {
+		use, short, done := "on", "Record connections again (the default)", "✓ Connection log on"
+		if !on {
+			use, short, done = "off", "Stop recording connections; traffic stats and hit counts keep counting", "✓ Connection log off"
+		}
+		return &cobra.Command{
+			Use:   use,
+			Short: short,
+			Args:  cobra.NoArgs,
+			RunE: withSession(configPath, func(ctx context.Context, cmd *cobra.Command, s *session, _ []string) error {
+				var err error
+				if s.running() {
+					err = s.client.SetConnectionLog(ctx, on)
+				} else {
+					err = s.app.SetConnectionLog(on)
+				}
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), done)
+				return nil
+			}),
+		}
+	}
+	clearCmd := &cobra.Command{
+		Use:   "clear",
+		Short: "Forget the connections recorded so far",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+			defer cancel()
+			c, _, err := runningClient(ctx, *configPath)
+			if err != nil {
+				return err
+			}
+			if c == nil {
+				fmt.Fprintln(cmd.OutOrStdout(), "RouteBox is not running; there is no connection log to clear.")
+				return nil
+			}
+			if err := c.ClearConnections(ctx); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "✓ Connection log cleared")
+			return nil
+		},
+	}
+	logCmd.AddCommand(toggle(true), toggle(false), clearCmd)
+	return logCmd
+}
+
 func runningClient(ctx context.Context, configPath string) (*control.Client, loaded, error) {
 	ld, err := loadConfig(configPath)
 	if err != nil {

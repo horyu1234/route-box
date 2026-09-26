@@ -21,8 +21,16 @@ func (v *LogView) Scroll(delta, total, height int) {
 
 func (v LogView) Following() bool { return v.Offset == 0 }
 
-// View 는 최신 항목을 맨 아래에 두고 height 행을 너비 w 로 그린다.
-func (v LogView) View(entries []events.ConnectionEvent, w, height int, lang i18n.Lang) []string {
+// View 는 최신 항목을 맨 아래에 두고 height 행을 너비 w 로 그린다. off 는
+// 연결 기록이 꺼져 있다는 뜻이다.
+func (v LogView) View(entries []events.ConnectionEvent, off bool, w, height int, lang i18n.Lang) []string {
+	if len(entries) == 0 && off {
+		return []string{
+			Dim.Render(lang.T("The connection log is off.")),
+			"",
+			Dim.Render(lang.T("Press o to turn it back on.")),
+		}
+	}
 	if len(entries) == 0 {
 		return []string{
 			Dim.Render(lang.T("Waiting for connections…")),

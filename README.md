@@ -288,6 +288,8 @@ routebox --preset <name>        # add before starting
 | `s` | Upstream manager (`a` add, `e` edit, `d` delete, `r` restart, `t` check host key) |
 | `r` | Restart all upstreams |
 | `l` | Show/hide the log (on narrow terminals: switch Routes ↔ log) |
+| `c` | Clear the connection log |
+| `o` | Turn connection logging off / on, saved to the config |
 | `L` | Switch language (English ↔ 한국어), saved to the config |
 | `g` / `G` | Top / bottom |
 | `?` | Help |
@@ -323,6 +325,8 @@ routebox preset list
 routebox preset add <name> --via seoul
 
 routebox status                            # --json; exit code 1 when not running
+routebox log off|on                        # stop / resume recording connections (saved)
+routebox log clear                         # forget the connections recorded so far
 routebox ssh status [upstream]             # state + recent ssh stderr
 routebox ssh restart [upstream]
 routebox ssh trust <upstream>              # show the host key fingerprint, save after you confirm
@@ -360,11 +364,13 @@ Override with `--config <path>` or `ROUTEBOX_CONFIG`.
     { "domain": "203.0.113.10", "mode": "proxy", "upstream": "lab" },
     { "domain": "intranet.example.com", "mode": "direct" }
   ],
-  "fallback": "seoul"
+  "fallback": "seoul",
+  "connection_log_off": false
 }
 ```
 
 - `fallback` is the upstream for traffic that matches no route. Omit it (or use `"direct"`) to send that traffic direct.
+- `connection_log_off: true` stops recording connections (`o` in the TUI, `routebox log off`); traffic stats and hit counts keep counting.
 - Omitted `user`/`port`/`identity_file` defer to `~/.ssh/config`. Setting `"port": 22` passes `-p 22` and overrides it.
 - Every change is saved immediately with an **atomic write**: temp file in the same directory, fsync, rename. The file is `0600`, the directory `0700`.
 - If the file cannot be loaded, RouteBox **never deletes or overwrites it**. The TUI shows the error and offers to continue with safe defaults, backing the file up to `config.json.bak-YYYYMMDD-HHMMSS` first. `--no-tui` and the CLI print the error and exit.
@@ -411,6 +417,7 @@ Status badge:
 - ssh hosts and users starting with `-` are rejected, and `--` precedes the host to prevent option injection.
 - The config file (`0600`) and control socket (`0600` in a `0700` directory) are private to your account. Anyone who can use the control socket controls RouteBox, which is why it is not exposed over TCP.
 - The background service on macOS logs every connection's `host:port` to `~/Library/Logs/RouteBox/routebox.log` (`0600`, rotated at 10 MB with one backup). `routebox service uninstall` leaves the log in place; delete the folder yourself if you stop using the service.
+- To keep no record of where you connect, turn the connection log off (`o` in the TUI or `routebox log off`). RouteBox then records no connections in the TUI, over the control socket, or in the `--no-tui` / `--log-file` / service log; only counts remain. `c` or `routebox log clear` forgets what is already in memory (it does not edit log files).
 - Keep in mind: browser features that bypass the proxy (DNS-over-HTTPS, prefetching) and apps that ignore proxy settings do not go through RouteBox. UDP traffic such as WebRTC cannot pass through an HTTP proxy.
 
 ## 16. Architecture

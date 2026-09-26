@@ -119,6 +119,10 @@ type languageRequest struct {
 	Language string `json:"language"`
 }
 
+type connectionLogRequest struct {
+	On bool `json:"on"`
+}
+
 type fallbackRequest struct {
 	Via string `json:"via"`
 }
@@ -243,6 +247,16 @@ func Serve(ctx context.Context, ln net.Listener, app *core.App) error {
 	})
 	handle("GET /v1/connections", func(*http.Request) (int, any, error) {
 		return http.StatusOK, connections(app), nil
+	})
+	handle("DELETE /v1/connections", func(*http.Request) (int, any, error) {
+		return http.StatusNoContent, nil, app.ClearConnections()
+	})
+	handle("PUT /v1/connections/log", func(r *http.Request) (int, any, error) {
+		var req connectionLogRequest
+		if err := decode(r, &req); err != nil {
+			return 0, nil, err
+		}
+		return http.StatusNoContent, nil, app.SetConnectionLog(req.On)
 	})
 	handle("GET /v1/config", func(*http.Request) (int, any, error) {
 		return http.StatusOK, app.Config(), nil
@@ -501,6 +515,14 @@ func (c *Client) RestartSSH(ctx context.Context, name string) error {
 func (c *Client) Connections(ctx context.Context) ([]Connection, error) {
 	var out []Connection
 	return out, c.do(ctx, http.MethodGet, "/v1/connections", nil, &out)
+}
+
+func (c *Client) ClearConnections(ctx context.Context) error {
+	return c.do(ctx, http.MethodDelete, "/v1/connections", nil, nil)
+}
+
+func (c *Client) SetConnectionLog(ctx context.Context, on bool) error {
+	return c.do(ctx, http.MethodPut, "/v1/connections/log", connectionLogRequest{On: on}, nil)
 }
 
 func (c *Client) Config(ctx context.Context) (config.Config, error) {

@@ -63,6 +63,9 @@ type Config struct {
 	// Fallback 은 어떤 route 에도 매칭되지 않은 연결이 나갈 업스트림 이름이다.
 	// 비어 있으면 DIRECT 다.
 	Fallback string `json:"fallback,omitempty"`
+	// ConnectionLogOff 는 연결 기록(TUI 의 Live Connections, --no-tui 와
+	// --log-file 의 연결 줄)을 끈다. 통계와 hit 수는 계속 센다.
+	ConnectionLogOff bool `json:"connection_log_off,omitempty"`
 
 	LegacySocks string     `json:"socks,omitempty"`
 	LegacySSH   *legacySSH `json:"ssh,omitempty"`

@@ -264,6 +264,25 @@ func (m Model) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.layout().routesShown {
 			m.focus = focusLogs
 		}
+	case "c":
+		if err := m.app.ClearConnections(); err != nil {
+			m.toast(components.ToastError, "%v", err)
+			break
+		}
+		m.conns, m.logView.Offset = nil, 0
+		m.toast(components.ToastInfo, "Connection log cleared")
+	case "o":
+		on := !m.status.ConnectionLog
+		if err := m.app.SetConnectionLog(on); err != nil {
+			m.toast(components.ToastError, "%v", err)
+			break
+		}
+		m.status = m.app.Status()
+		if on {
+			m.toast(components.ToastInfo, "Connection log on")
+		} else {
+			m.toast(components.ToastInfo, "Connection log off; traffic stats and hit counts keep counting")
+		}
 	case "L":
 		m.lang = m.lang.Next()
 		if err := m.app.SetLanguage(string(m.lang)); err != nil {
