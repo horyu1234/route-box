@@ -94,9 +94,32 @@ go install github.com/horyu1234/route-box/cmd/routebox@latest
 
 macOS Gatekeeper 가 내려받은 바이너리를 막으면 `xattr -d com.apple.quarantine routebox`.
 
+### 백그라운드 실행
+
+Firefox 가 RouteBox 를 가리키고 있으면, RouteBox 가 꺼져 있는 동안에는 **모든** 사이트가 "프록시 서버가 연결을 거부했습니다" 로 막힙니다. 사용자 서비스로 등록하면 로그인할 때 뜨고, 비정상 종료되면 다시 뜹니다.
+
+```sh
+routebox service install     # macOS: launchd LaunchAgent · Linux: systemd --user unit
+```
+
+그 뒤로 `routebox` 를 실행하면 TUI 가 백그라운드 인스턴스의 **관리 패널**로 붙습니다. 모든 변경은 제어 소켓으로 그 인스턴스에 전달되고, `q` 는 패널만 닫으며 프록시와 ssh 터널은 계속 돕니다. CLI 명령(`route`, `upstream`, `status` …)도 같은 방식으로 동작합니다.
+
+```sh
+routebox service status      # 설치 여부, 실행 여부, 로그 위치
+routebox service restart     # 바이너리를 교체한 뒤 등
+routebox service stop        # 다음 로그인까지 (또는 `routebox service start`)
+routebox service uninstall   # 멈추고 로그인 항목에서 제거
+```
+
+- 서비스는 `install` 을 실행한 셸의 설정 경로와 `PATH` 로 `routebox --no-tui --config <절대 경로>` 를 실행합니다. `--config` 나 `ROUTEBOX_CONFIG` 를 쓴다면 `install` 과, 붙을 때의 `routebox` 에 같은 값을 넘기세요. 바이너리나 설정을 옮겼으면 `install` 을 다시 실행합니다.
+- 로그: macOS 는 `~/Library/Logs/RouteBox/routebox.log` (10 MB 에서 교체, `.1` 백업 하나 유지), Linux 는 journal(`journalctl --user -u routebox`)을 씁니다.
+- 설치할 때 터미널에서 RouteBox 가 이미 돌고 있으면, 서비스는 계속 재시도하다가, 그 인스턴스를 종료하면 10초 안팎에 이어받습니다. macOS 에서는 재시도마다 `~/Library/Logs/RouteBox/stderr.log` 에 `another RouteBox instance is already running` 줄이 쌓이므로, 서비스와 터미널 인스턴스를 함께 켜 두지 마세요.
+- ssh 가 터미널 없이 실행되므로 passphrase 를 묻거나 호스트 키를 확인받을 수 없습니다. agent 에 들어 있는 키를 쓰고(macOS: `UseKeychain yes` + `AddKeysToAgent yes`, 또는 1Password 같은 `IdentityAgent`), 미리 `ssh <호스트>` 로 한 번 접속해 두세요. Linux 의 `systemd --user` 서비스는 셸의 `SSH_AUTH_SOCK` 을 물려받지 않습니다. [문제 해결](#14-문제-해결)을 보세요.
+- 직접 쓰는 프로세스 관리자나 로그인 항목으로 띄워도 됩니다. `routebox --no-tui` (필요하면 `--log-file` 도)를 실행하면 됩니다.
+
 ### 업데이트
 
-1. 실행 중인 인스턴스를 종료합니다. TUI 는 `q`, `--no-tui` 는 `Ctrl+C`. `routebox status` 가 `RouteBox   not running` 을 출력하면 됩니다.
+1. 실행 중인 인스턴스를 종료합니다. TUI 는 `q`, `--no-tui` 는 `Ctrl+C`. `routebox status` 가 `RouteBox   not running` 을 출력하면 됩니다. [백그라운드 서비스](#백그라운드-실행)를 쓰면 이 단계는 건너뛰어도 됩니다.
 2. 필요하면 `config.json` 을 백업합니다([설정](#13-설정)).
 3. 설치했던 방법 그대로 바이너리를 교체합니다.
 
@@ -106,7 +129,7 @@ macOS Gatekeeper 가 내려받은 바이너리를 막으면 `xattr -d com.apple.
    git pull && make build   # 이후 bin/routebox 로 기존 바이너리를 덮어씁니다
    ```
 
-4. `routebox` 를 다시 실행합니다. 라우트와 업스트림은 설정 파일에 그대로 남아 있고, 예전 버전의 설정은 읽을 때 새 형식으로 옮겨집니다.
+4. `routebox` 를 다시 실행합니다. 백그라운드 서비스라면 `routebox service restart` 를 실행합니다(재시작 전까지는 예전 바이너리가 계속 돕니다). 라우트와 업스트림은 설정 파일에 그대로 남아 있고, 예전 버전의 설정은 읽을 때 새 형식으로 옮겨집니다.
 
 `routebox --version` 은 `make build` 로 만든 바이너리에서 버전(`git describe` 값)을 보여 줍니다. `go install` 로 설치하면 `dev` 로 표시됩니다.
 
@@ -134,6 +157,8 @@ make clean
 6. **확인**
 
 Firefox 는 HTTPS 를 `CONNECT host:443` 으로 보내므로 RouteBox 는 호스트 이름만 보고 라우팅합니다. 메뉴 문구는 Firefox 버전과 언어에 따라 다를 수 있습니다.
+
+> RouteBox 가 실행 중이 아니면 Firefox 는 이 프록시로 어떤 페이지도 열지 못합니다. [백그라운드 서비스](#백그라운드-실행)를 설치해 늘 떠 있게 하세요.
 
 > Firefox 에만 설정하면 다른 앱은 RouteBox 를 거치지 않습니다. 시스템 프록시를 따르는 앱 전체에 적용하려면 OS 프록시 설정에 같은 주소를 넣습니다(macOS: 시스템 설정 → 네트워크 → 세부사항 → 프록시 → 웹 프록시(HTTP), 보안 웹 프록시(HTTPS)).
 
@@ -253,7 +278,7 @@ routebox --preset <이름>        # 시작하면서 추가
 | `g` / `G` | 맨 위 / 맨 아래 |
 | `?` | 도움말 |
 | `esc` | 창 닫기 |
-| `q`, `ctrl+c` | 종료 (ssh 터널 정리, 한 번 더 누르면 즉시 종료) |
+| `q`, `ctrl+c` | 종료 (ssh 터널 정리, 한 번 더 누르면 즉시 종료). [백그라운드 인스턴스](#백그라운드-실행)에 붙어 있을 때는 패널만 닫음 |
 
 레이아웃은 터미널 크기에 맞춰 바뀝니다. 96열 이상이면 패널을 나란히, 그보다 좁으면 라우트를 먼저 보여 주고 `l` 로 로그와 바꿉니다. 22행 미만이면 하단이 한 줄 상태 표시로 줄고, 50×14 보다 작으면 "터미널이 너무 작습니다" 를 표시합니다.
 
@@ -262,8 +287,9 @@ routebox --preset <이름>        # 시작하면서 추가
 ## 12. CLI
 
 ```sh
-routebox                                   # TUI
-routebox --no-tui                          # 헤드리스, 이벤트를 stdout 에 기록
+routebox                                   # TUI (RouteBox 가 이미 실행 중이면 관리 패널로 붙음)
+routebox --no-tui                          # 헤드리스, 이벤트를 stderr 에 기록
+routebox --no-tui --log-file PATH          # 헤드리스, 10 MB 에서 교체되는 파일에 기록
 routebox --listen 127.0.0.1:8080           # 이번 실행에만 (저장 안 함)
 routebox --socks 127.0.0.1:1081            # 첫 업스트림의 SOCKS, 이번 실행에만
 routebox --lang ko                         # TUI 언어, 이번 실행에만
@@ -284,9 +310,12 @@ routebox preset add <이름> --via seoul
 routebox status                            # --json, 실행 중이 아니면 종료 코드 1
 routebox ssh status [업스트림]             # 상태 + 최근 ssh stderr
 routebox ssh restart [업스트림]
+
+routebox service install|uninstall         # 로그인할 때 실행 (launchd / systemd --user)
+routebox service start|stop|restart|status
 ```
 
-CLI 와 TUI 는 같은 코어(`internal/core`)를 씁니다. RouteBox 가 실행 중이면 CLI 는 제어 소켓으로 실행 중인 인스턴스에 요청하므로 즉시 반영됩니다. 실행 중이 아니면 같은 코드로 설정 파일만 고치고 다음 실행부터 적용됩니다. 같은 설정 디렉터리로 두 번째 인스턴스를 띄우면 거부하므로 ssh 가 중복 실행되지 않습니다.
+CLI 와 TUI 는 같은 코어(`internal/core`)를 씁니다. RouteBox 가 실행 중이면 CLI 는 제어 소켓으로 실행 중인 인스턴스에 요청하므로 즉시 반영됩니다. 실행 중이 아니면 같은 코드로 설정 파일만 고치고 다음 실행부터 적용됩니다. 같은 설정 디렉터리로 두 번째 인스턴스를 띄우면 거부하므로 ssh 가 중복 실행되지 않습니다. 대신 `routebox`(TUI)를 실행하면 실행 중인 인스턴스에 붙고, `--listen`/`--socks` 는 시작할 때만 적용되므로 거부합니다.
 
 ## 13. 설정
 
@@ -328,6 +357,9 @@ CLI 와 TUI 는 같은 코어(`internal/core`)를 씁니다. RouteBox 가 실행
 
 | 증상 | 원인과 조치 |
 |---|---|
+| Firefox: 모든 사이트에서 "프록시 서버가 연결을 거부했습니다" | RouteBox 가 실행 중이 아닙니다. 실행하거나 [백그라운드 서비스](#백그라운드-실행)를 설치하세요. |
+| TUI 에서는 되는데 서비스로는 터널이 실패 | 서비스에는 터미널이 없어서 agent 에 없는 passphrase 키나 처음 보는 호스트 키에 답할 수 없습니다. [백그라운드 실행](#백그라운드-실행)을 보고 서비스 로그를 확인하세요. |
+| Linux 서비스에서 `Permission denied (publickey)` | `systemd --user` 는 셸의 `SSH_AUTH_SOCK` 을 모릅니다. `~/.ssh/config` 에 `IdentityAgent` 를 지정하거나, 로그인 세션에서 `systemctl --user import-environment SSH_AUTH_SOCK` 을 실행한 뒤 `routebox service restart`. |
 | `Host key verification failed` | 처음 접속하는 서버입니다. 터미널에서 `ssh <호스트>` 를 한 번 실행해 키를 확인하고 저장하세요. RouteBox 는 호스트 키를 자동으로 수락하지 않습니다. |
 | `Permission denied (publickey)` | 키가 서버에 등록되지 않았거나, 비밀번호 걸린 키가 agent 에 없습니다. `ssh-add ~/.ssh/id_ed25519` 후 `r`. |
 | 키를 `ssh-agent` 에 올렸는데도 `Permission denied (publickey)` | `~/.ssh/config` 에 `IdentityAgent`(예: 1Password)가 있으면 ssh 는 `SSH_AUTH_SOCK` 대신 그 agent 에 묻습니다. 그 agent 에 키를 넣거나 이 호스트에 맞는 `IdentityAgent` 를 지정하세요. 어떤 agent 와 키를 시도하는지는 `ssh -v <호스트>` 로 볼 수 있습니다. |
@@ -357,13 +389,14 @@ CLI 와 TUI 는 같은 코어(`internal/core`)를 씁니다. RouteBox 가 실행
 - 로그·TUI·이벤트에는 **`host:port` 만** 남깁니다. URL 경로, query string, 헤더(Authorization, Proxy-Authorization, Cookie)는 기록하지 않습니다. 일반 HTTP 를 전달할 때 `Proxy-Authorization` 같은 hop-by-hop 헤더는 넘기지 않습니다.
 - 개인 키는 저장하지 않고 경로만 저장합니다. 비밀번호 인증 UI 는 없습니다.
 - `-` 로 시작하는 ssh 호스트·사용자는 거부하고, 호스트 앞에 `--` 를 넣어 옵션 주입을 막습니다.
-- 설정 파일(`0600`)과 제어 소켓(`0700` 디렉터리 안의 `0600`)은 본인 계정만 접근할 수 있습니다.
+- 설정 파일(`0600`)과 제어 소켓(`0700` 디렉터리 안의 `0600`)은 본인 계정만 접근할 수 있습니다. 제어 소켓을 쓸 수 있으면 RouteBox 를 조종할 수 있으므로 TCP 로는 열지 않습니다.
+- macOS 백그라운드 서비스는 모든 연결의 `host:port` 를 `~/Library/Logs/RouteBox/routebox.log` (`0600`, 10 MB 에서 교체, 백업 하나)에 기록합니다. `routebox service uninstall` 은 로그를 지우지 않으므로, 서비스를 그만 쓰면 폴더를 직접 지우세요.
 - 알아둘 점: 프록시를 우회하는 브라우저 기능(DNS-over-HTTPS, 프리페치)과 프록시 설정을 무시하는 앱은 RouteBox 를 거치지 않습니다. WebRTC 같은 UDP 트래픽은 HTTP 프록시로 전달되지 않습니다.
 
 ## 16. 아키텍처
 
 ```
-cmd/routebox/          Cobra CLI, TUI / --no-tui 모드 조립, 제어 소켓 클라이언트
+cmd/routebox/          Cobra CLI, TUI / --no-tui / attach 모드 조립, 제어 소켓 클라이언트
 internal/
   core/                App: config·router·proxy·업스트림별 ssh·stats·events 를 묶는 단일 진입점
                        (TUI·CLI·제어 소켓이 모두 같은 메서드를 호출)
@@ -373,7 +406,10 @@ internal/
   socks/               최소 SOCKS5 클라이언트 (hostname 은 항상 ATYP 0x03)
     sockstest/         테스트용 인프로세스 SOCKS5 서버 (받은 주소를 그대로 기록)
   ssh/                 ssh 자식 하나 감독: 준비 감지, 재연결, 종료와 회수
-  control/             유닉스 소켓 HTTP API + 단일 인스턴스 잠금
+  control/             유닉스 소켓 HTTP API + 단일 인스턴스 잠금, NDJSON 이벤트 스트림,
+                       Remote (실행 중인 인스턴스에 붙은 TUI 용, 스냅샷을 폴링하는 Backend)
+  service/             launchd LaunchAgent / systemd --user unit 생성과 제어
+  logfile/             백그라운드 서비스용 크기 기준 교체 로그 파일
   events/              non-blocking 이벤트 버스 (느린 구독자는 이벤트를 잃고 프록시는 막히지 않음)
   stats/               atomic 카운터
   logbuf/              제네릭 링 버퍼 (최근 연결 500개)
@@ -386,7 +422,7 @@ internal/
           ┌──────────── TUI ────────────┐      ┌──── CLI ─────┐
           │ Bubble Tea (구독 + 폴링)     │      │ route/…/ssh  │
           └──────────────┬──────────────┘      └──────┬───────┘
-                         │ 메서드 호출                │ unix socket (실행 중)
+                         │ 메서드 호출 또는 socket    │ unix socket (실행 중)
                          ▼                            ▼ 또는 직접 호출 (미실행)
  ┌──────────────────────────────── core.App ────────────────────────────────┐
  │ config.Store ─► router.Router (atomic 교체)                               │

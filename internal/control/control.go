@@ -19,6 +19,7 @@ import (
 
 	"github.com/horyu1234/route-box/internal/config"
 	"github.com/horyu1234/route-box/internal/core"
+	"github.com/horyu1234/route-box/internal/events"
 	"github.com/horyu1234/route-box/internal/router"
 	"github.com/horyu1234/route-box/internal/ssh"
 )
@@ -98,6 +99,16 @@ type remoteError struct {
 
 func (e *remoteError) Error() string { return e.msg }
 func (e *remoteError) Unwrap() error { return e.sentinel }
+
+type updateRouteRequest struct {
+	Old    string `json:"old"`
+	Domain string `json:"domain"`
+	Via    string `json:"via"`
+}
+
+type languageRequest struct {
+	Language string `json:"language"`
+}
 
 type routeRequest struct {
 	Domain string `json:"domain"`
@@ -218,22 +229,47 @@ func Serve(ctx context.Context, ln net.Listener, app *core.App) error {
 		return http.StatusNoContent, nil, app.RestartUpstream(r.URL.Query().Get("name"))
 	})
 	handle("GET /v1/connections", func(*http.Request) (int, any, error) {
-		recent := app.RecentConnections()
-		out := make([]Connection, len(recent))
-		for i, e := range recent {
-			out[i] = Connection{
-				Time: e.Time, Method: e.Method, Host: e.Host, Port: e.Port, Route: e.Route, Upstream: e.Upstream,
-				State: e.State.String(), BytesIn: e.BytesIn, BytesOut: e.BytesOut,
-				Duration: e.Duration.Round(time.Millisecond).String(),
-			}
-			if e.Error != nil {
-				out[i].Error = e.Error.Error()
-			}
+		return http.StatusOK, connections(app), nil
+	})
+	handle("GET /v1/config", func(*http.Request) (int, any, error) {
+		return http.StatusOK, app.Config(), nil
+	})
+	handle("GET /v1/snapshot", func(*http.Request) (int, any, error) {
+		return http.StatusOK, Snapshot{Config: app.Config(), Status: app.Status(), Connections: connections(app)}, nil
+	})
+	handle("PUT /v1/routes", func(r *http.Request) (int, any, error) {
+		var req updateRouteRequest
+		if err := decode(r, &req); err != nil {
+			return 0, nil, err
 		}
-		return http.StatusOK, out, nil
+		rt, err := app.UpdateRoute(req.Old, req.Domain, req.Via)
+		return http.StatusOK, rt, err
+	})
+	handle("PUT /v1/upstreams", func(r *http.Request) (int, any, error) {
+		var u config.Upstream
+		if err := decode(r, &u); err != nil {
+			return 0, nil, err
+		}
+		updated, err := app.UpdateUpstream(r.URL.Query().Get("name"), u)
+		return http.StatusOK, updated, err
+	})
+	handle("PUT /v1/language", func(r *http.Request) (int, any, error) {
+		var req languageRequest
+		if err := decode(r, &req); err != nil {
+			return 0, nil, err
+		}
+		return http.StatusNoContent, nil, app.SetLanguage(req.Language)
+	})
+	mux.HandleFunc("GET /v1/events", func(w http.ResponseWriter, r *http.Request) {
+		streamEvents(w, r, app)
 	})
 
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	// BaseContext 를 ctx 로 두어, 종료할 때 이벤트 스트림이 Shutdown 을 붙잡지 않게 한다.
+	srv := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return ctx },
+	}
 	stop := context.AfterFunc(ctx, func() {
 		sctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -246,6 +282,49 @@ func Serve(ctx context.Context, ln net.Listener, app *core.App) error {
 		return nil
 	}
 	return err
+}
+
+func connections(app *core.App) []Connection {
+	recent := app.RecentConnections()
+	out := make([]Connection, len(recent))
+	for i, e := range recent {
+		out[i] = toConnection(e)
+	}
+	return out
+}
+
+// streamEvents 는 구독을 NDJSON 으로 흘려보낸다. 인스턴스가 멈춰 bus 가 닫히면
+// 스트림도 끝나고, 클라이언트는 그것으로 연결이 끊겼음을 안다.
+func streamEvents(w http.ResponseWriter, r *http.Request, app *core.App) {
+	fl, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, errors.New("streaming unsupported"))
+		return
+	}
+	sub, unsub := app.Subscribe(1024)
+	defer unsub()
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.WriteHeader(http.StatusOK)
+	fl.Flush()
+	enc := json.NewEncoder(w)
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case e, ok := <-sub:
+			if !ok {
+				return
+			}
+			we, send, err := encodeEvent(e)
+			if err != nil || !send {
+				continue
+			}
+			if enc.Encode(we) != nil {
+				return
+			}
+			fl.Flush()
+		}
+	}
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -269,18 +348,21 @@ func writeError(w http.ResponseWriter, err error) {
 // Client 는 실행 중인 인스턴스와 통신한다.
 type Client struct {
 	hc *http.Client
+	// stream 은 타임아웃이 없는 client 다: 이벤트 스트림은 attach 가 끝날 때까지 열려 있다.
+	stream *http.Client
 }
 
 func NewClient(path string) *Client {
-	return &Client{hc: &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				var d net.Dialer
-				return d.DialContext(ctx, "unix", path)
-			},
+	tr := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", path)
 		},
-	}}
+	}
+	return &Client{
+		hc:     &http.Client{Timeout: 10 * time.Second, Transport: tr},
+		stream: &http.Client{Transport: tr},
+	}
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
@@ -296,28 +378,39 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	if err != nil {
 		return err
 	}
-	resp, err := c.hc.Do(req)
+	resp, err := send(c.hc, req)
 	if err != nil {
-		if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED) {
-			return ErrNotRunning
-		}
-		return fmt.Errorf("control request: %w", err)
+		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		var eb errorBody
-		_ = json.NewDecoder(resp.Body).Decode(&eb)
-		for _, s := range sentinels {
-			if s.kind == eb.Kind {
-				return &remoteError{msg: eb.Error, sentinel: s.err}
-			}
-		}
-		return errors.New(eb.Error)
-	}
 	if out == nil {
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// send 는 요청을 보내고, 소켓이 없으면 ErrNotRunning 을, 오류 응답이면
+// sentinel 을 되살린 오류를 돌려준다. 성공하면 body 는 호출자가 닫는다.
+func send(hc *http.Client, req *http.Request) (*http.Response, error) {
+	resp, err := hc.Do(req)
+	if err != nil {
+		if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED) {
+			return nil, ErrNotRunning
+		}
+		return nil, fmt.Errorf("control request: %w", err)
+	}
+	if resp.StatusCode < 300 {
+		return resp, nil
+	}
+	defer resp.Body.Close()
+	var eb errorBody
+	_ = json.NewDecoder(resp.Body).Decode(&eb)
+	for _, s := range sentinels {
+		if s.kind == eb.Kind {
+			return nil, &remoteError{msg: eb.Error, sentinel: s.err}
+		}
+	}
+	return nil, errors.New(eb.Error)
 }
 
 func (c *Client) Status(ctx context.Context) (core.Status, error) {
@@ -376,4 +469,63 @@ func (c *Client) RestartSSH(ctx context.Context, name string) error {
 func (c *Client) Connections(ctx context.Context) ([]Connection, error) {
 	var out []Connection
 	return out, c.do(ctx, http.MethodGet, "/v1/connections", nil, &out)
+}
+
+func (c *Client) Config(ctx context.Context) (config.Config, error) {
+	var cfg config.Config
+	return cfg, c.do(ctx, http.MethodGet, "/v1/config", nil, &cfg)
+}
+
+func (c *Client) Snapshot(ctx context.Context) (Snapshot, error) {
+	var s Snapshot
+	return s, c.do(ctx, http.MethodGet, "/v1/snapshot", nil, &s)
+}
+
+func (c *Client) UpdateRoute(ctx context.Context, oldDomain, domain, via string) (router.Route, error) {
+	var r router.Route
+	return r, c.do(ctx, http.MethodPut, "/v1/routes", updateRouteRequest{Old: oldDomain, Domain: domain, Via: via}, &r)
+}
+
+func (c *Client) UpdateUpstream(ctx context.Context, oldName string, u config.Upstream) (config.Upstream, error) {
+	var out config.Upstream
+	return out, c.do(ctx, http.MethodPut, "/v1/upstreams?name="+url.QueryEscape(oldName), u, &out)
+}
+
+func (c *Client) SetLanguage(ctx context.Context, lang string) error {
+	return c.do(ctx, http.MethodPut, "/v1/language", languageRequest{Language: lang}, nil)
+}
+
+// Events 는 실행 중인 인스턴스의 이벤트 스트림을 연다. 채널은 ctx 가 취소되거나
+// 인스턴스가 멈추거나 연결이 끊기면 닫힌다.
+func (c *Client) Events(ctx context.Context) (<-chan events.Event, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://routebox/v1/events", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := send(c.stream, req)
+	if err != nil {
+		return nil, err
+	}
+	ch := make(chan events.Event, 256)
+	go func() {
+		defer close(ch)
+		defer resp.Body.Close()
+		dec := json.NewDecoder(resp.Body)
+		for {
+			var w wireEvent
+			if err := dec.Decode(&w); err != nil {
+				return
+			}
+			e, err := decodeEvent(w)
+			if err != nil {
+				continue
+			}
+			select {
+			case ch <- e:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch, nil
 }

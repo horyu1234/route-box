@@ -48,7 +48,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refresh()
 		m.fatal = m.t("RouteBox stopped unexpectedly.")
-		if m.status.Proxy.Err != "" {
+		if m.opts.Attached {
+			m.fatal = m.t("Lost the connection to the background RouteBox.")
+		} else if m.status.Proxy.Err != "" {
 			m.fatal = m.t("Could not start the proxy:") + "\n" + m.status.Proxy.Err
 		}
 		m.modal = modalFatal
@@ -70,7 +72,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) beginQuit() (tea.Model, tea.Cmd) {
-	if m.quitting || !m.started || m.stopped {
+	// 붙어 있을 때는 패널만 닫는다: 백그라운드 인스턴스는 계속 돈다.
+	if m.quitting || !m.started || m.stopped || m.opts.Attached {
 		return m, tea.Quit
 	}
 	m.quitting = true

@@ -17,6 +17,7 @@ import (
 	"github.com/horyu1234/route-box/internal/control"
 	"github.com/horyu1234/route-box/internal/core"
 	"github.com/horyu1234/route-box/internal/events"
+	"github.com/horyu1234/route-box/internal/logfile"
 	"github.com/horyu1234/route-box/internal/router"
 	"github.com/horyu1234/route-box/internal/ssh"
 	"github.com/horyu1234/route-box/internal/tui"
@@ -28,6 +29,7 @@ type runFlags struct {
 	socks   string
 	presets []string
 	lang    string
+	logFile string
 }
 
 type loaded struct {
@@ -79,11 +81,21 @@ func runMain(configPath string, f runFlags) error {
 	if err != nil {
 		return err
 	}
+	sockPath := control.SocketPath(ld.path)
+	// 이미 (보통 백그라운드 서비스로) 돌고 있으면 관리 패널로만 붙는다.
+	if !f.noTUI {
+		c := control.NewClient(sockPath)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		_, err := c.Status(ctx)
+		cancel()
+		if err == nil {
+			return runAttached(c, f)
+		}
+	}
 	if ld.err != nil && (f.noTUI || len(f.presets) > 0) {
 		return fmt.Errorf("%w\n(the file was not modified; fix or remove it and try again)", ld.err)
 	}
 
-	sockPath := control.SocketPath(ld.path)
 	ln, err := control.Listen(sockPath)
 	if err != nil {
 		if errors.Is(err, control.ErrAlreadyRunning) {
@@ -115,6 +127,18 @@ func runMain(configPath string, f runFlags) error {
 	rt := newRuntime(app, ln)
 
 	if f.noTUI {
+		if f.logFile != "" {
+			lf, err := logfile.Open(f.logFile, 0)
+			if err != nil {
+				_ = ln.Close()
+				return err
+			}
+			defer lf.Close()
+			log.SetOutput(lf)
+			log.SetFlags(log.Ldate | log.Ltime)
+		} else {
+			log.SetFlags(log.Ltime)
+		}
 		return runHeadless(ctx, app, rt)
 	}
 	// TUI 가 뜨기 전에 먼저 서비스를 시작한다: 프록시가 터미널 준비를 기다려서는 안 된다.
@@ -138,6 +162,29 @@ func runMain(configPath string, f runFlags) error {
 		return runErr
 	}
 	return nil
+}
+
+var _ tui.Backend = (*control.Remote)(nil)
+
+// runAttached 는 이미 실행 중인 인스턴스에 TUI 를 관리 패널로 붙인다. 패널을
+// 닫아도 인스턴스는 계속 돈다.
+func runAttached(c *control.Client, f runFlags) error {
+	if f.listen != "" || f.socks != "" {
+		return errors.New("--listen and --socks apply only when RouteBox starts, and it is already running (stop it first, e.g. `routebox service stop`)")
+	}
+	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer stopSignals()
+	for _, p := range f.presets {
+		if _, err := c.AddPreset(ctx, p, ""); err != nil {
+			return err
+		}
+	}
+	remote, err := control.NewRemote(ctx, c)
+	if err != nil {
+		return err
+	}
+	defer remote.Close()
+	return tui.Run(ctx, tui.Options{App: remote, Attached: true, Lang: f.lang})
 }
 
 // runtime 은 실행 중인 인스턴스 뒤에서 도는 goroutine들을 소유한다: proxy/ssh
@@ -210,7 +257,6 @@ func (r *runtime) stopAndWait() error {
 }
 
 func runHeadless(ctx context.Context, app *core.App, rt *runtime) error {
-	log.SetFlags(log.Ltime)
 	sub, unsub := app.Subscribe(1024)
 	defer unsub()
 	cfg := app.Config()

@@ -9,6 +9,7 @@
 - Unknown/down upstream → 502; never fall back to another upstream or direct
 - `direct` is a reserved upstream name; `Config.Normalize` pins empty-via proxy routes to the first upstream; `RemoveUpstream` refuses while routes use it
 - All mutations go through `core.App`; the CLI uses the control socket when an instance is running, else the same core code on the config file
+- The TUI only sees `tui.Backend`: `*core.App` in-process, or `control.Remote` when `routebox` attaches to a running instance (`q` then detaches only). A new App method used by the TUI needs a control endpoint + `Remote` method; a new event type needs an `encodeEvent`/`decodeEvent` case in `control/wire.go`
 
 ## Testing patterns
 - Fake ssh = the test binary itself via `ROUTEBOX_FAKE_SSH` in `TestMain` (ssh, core packages); fake SOCKS = `internal/socks/sockstest`

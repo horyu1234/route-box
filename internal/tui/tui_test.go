@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/horyu1234/route-box/internal/config"
+	"github.com/horyu1234/route-box/internal/control"
 	"github.com/horyu1234/route-box/internal/core"
 	"github.com/horyu1234/route-box/internal/events"
 	"github.com/horyu1234/route-box/internal/router"
@@ -414,5 +417,114 @@ func TestTooSmall(t *testing.T) {
 	m := resize(newModel(t, twoUpstreams), 40, 10)
 	if v := plain(m.View()); !strings.Contains(v, "Terminal too small") || !strings.Contains(v, "Minimum recommended size") {
 		t.Fatalf("view = %q", v)
+	}
+}
+
+func TestAttachedQuitClosesPanelOnly(t *testing.T) {
+	shutdown := false
+	m := newModel(t, twoUpstreams, func(o *Options) {
+		o.Attached = true
+		o.Start = nil
+		o.Shutdown = func() { shutdown = true }
+	})
+	v := plain(m.View())
+	if !strings.Contains(v, "[q] close") || !strings.Contains(v, "q closes this panel only") {
+		t.Errorf("attached view should say q only closes the panel:\n%s", v)
+	}
+	if !strings.Contains(plain(press(t, m, "?").View()), "close this panel (RouteBox keeps running)") {
+		t.Error("help should explain that RouteBox keeps running")
+	}
+	for _, lang := range []string{"en", "ko"} {
+		lm := newModel(t, twoUpstreams, func(o *Options) { o.Attached, o.Lang = true, lang })
+		for _, size := range [][2]int{{160, 48}, {80, 24}, {50, 14}} {
+			mm := resize(lm, size[0], size[1])
+			assertFits(t, mm, lang+" attached")
+			assertFits(t, press(t, mm, "?"), lang+" attached help")
+		}
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if shutdown || cmd == nil {
+		t.Fatalf("shutdown=%v cmd=%v", shutdown, cmd)
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("q should quit the panel immediately")
+	}
+	next, _ := m.Update(eventsClosedMsg{})
+	if mm := next.(Model); mm.modal != modalFatal || !strings.Contains(mm.fatal, "Lost the connection") {
+		t.Fatalf("lost connection not reported: %q", mm.fatal)
+	}
+}
+
+// TestPanelDrivesBackgroundInstance 는 attach 한 TUI 가 제어 소켓 너머의 인스턴스를
+// 로컬 App 과 똑같이 다루는지 확인한다: 키 입력이 인스턴스를 바꾸고, 인스턴스의
+// 이벤트가 소켓을 건너 TUI 에 도착한다.
+func TestPanelDrivesBackgroundInstance(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "rbtui")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	cfg := config.Default()
+	twoUpstreams(&cfg)
+	cfg.Upstreams[0] = config.Upstream{Name: "seoul", Mode: config.SSHExternal, Socks: "127.0.0.1:1"}
+	app := core.New(core.Options{ConfigPath: filepath.Join(dir, "config.json"), Config: cfg, ListenOverride: "127.0.0.1:0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = app.Run(ctx) }()
+	sock := filepath.Join(dir, "routebox.sock")
+	ln, err := control.Listen(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = control.Serve(ctx, ln, app) }()
+	for deadline := time.Now().Add(5 * time.Second); !app.Status().Proxy.Running; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("proxy did not start")
+		}
+	}
+
+	remote, err := control.NewRemote(ctx, control.NewClient(sock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer remote.Close()
+	m := New(Options{App: remote, Attached: true, Lang: "en"})
+	t.Cleanup(m.unsub)
+	m = resize(m, 120, 36)
+
+	m = press(t, m, "a")
+	m = typeText(m, "example.com")
+	m = press(t, m, "tab", "right", "enter")
+	if m.modal != modalNone {
+		t.Fatalf("form still open: %q", m.form.Err)
+	}
+	if got := app.Routes(); len(got) != 1 || got[0].Domain != "example.com" || got[0].Upstream != "lab" {
+		t.Fatalf("instance routes = %+v", got)
+	}
+	if !strings.Contains(plain(m.View()), "→ lab") {
+		t.Error("panel does not show the new route")
+	}
+
+	// 인스턴스 쪽 변경이 이벤트 스트림으로 패널에 도착한다.
+	if _, err := app.AddRoute("example.org", "direct"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(5 * time.Second)
+	for len(m.routes) != 2 {
+		select {
+		case e, ok := <-m.events:
+			if !ok {
+				t.Fatal("event stream closed")
+			}
+			next, _ := m.Update(eventMsg{e})
+			m = next.(Model)
+		case <-deadline:
+			t.Fatalf("RoutesChanged never arrived; routes = %+v", m.routes)
+		}
+	}
+
+	m = press(t, m, "L")
+	if app.Config().Language != "ko" {
+		t.Errorf("language not saved on the instance: %q", app.Config().Language)
 	}
 }

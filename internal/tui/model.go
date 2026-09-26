@@ -1,5 +1,6 @@
 // Package tui 는 RouteBox 터미널 UI 다. core 를 이벤트 스트림과 주기적
-// 스냅샷으로 관찰하고, 변경은 오직 core.App 을 통해서만 한다.
+// 스냅샷으로 관찰하고, 변경은 오직 Backend(같은 프로세스의 core.App, 또는
+// 백그라운드 인스턴스에 붙은 control.Remote)를 통해서만 한다.
 package tui
 
 import (
@@ -8,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/horyu1234/route-box/internal/config"
 	"github.com/horyu1234/route-box/internal/core"
 	"github.com/horyu1234/route-box/internal/events"
 	"github.com/horyu1234/route-box/internal/router"
@@ -16,8 +18,32 @@ import (
 	"github.com/horyu1234/route-box/internal/tui/i18n"
 )
 
+// Backend 는 TUI 가 RouteBox 를 보고 바꾸는 데 쓰는 core.App 의 메서드들이다.
+// getter 는 Update 안에서 동기적으로 불리므로 빨리 반환해야 한다.
+type Backend interface {
+	Config() config.Config
+	Status() core.Status
+	Routes() []router.Route
+	RecentConnections() []events.ConnectionEvent
+	Subscribe(buffer int) (<-chan events.Event, func())
+
+	AddRoute(input, via string) (router.Route, error)
+	UpdateRoute(oldDomain, input, via string) (router.Route, error)
+	SetRouteVia(domain, via string) (router.Route, error)
+	RemoveRoute(domain string) (router.Route, error)
+	AddPreset(name, via string) ([]router.Route, error)
+	AddUpstream(u config.Upstream) (config.Upstream, error)
+	UpdateUpstream(oldName string, u config.Upstream) (config.Upstream, error)
+	RemoveUpstream(name string) error
+	RestartUpstream(name string) error
+	SetLanguage(lang string) error
+}
+
 type Options struct {
-	App *core.App
+	App Backend
+	// Attached 는 백그라운드로 도는 인스턴스에 관리 패널로만 붙었음을 뜻한다.
+	// 이때 q 는 패널만 닫고 프록시와 ssh 터널은 계속 돈다.
+	Attached bool
 	// Start 는 프록시, ssh supervisor, 제어 소켓을 띄운다. 여러 번 불려도 안전해야 한다.
 	Start func()
 	// Shutdown 은 그것들을 취소한다. 이벤트 스트림이 닫히면 TUI 가 끝난다.
@@ -78,7 +104,7 @@ type onboardState struct {
 
 type Model struct {
 	opts   Options
-	app    *core.App
+	app    Backend
 	events <-chan events.Event
 	unsub  func()
 	lang   i18n.Lang
@@ -141,6 +167,9 @@ func New(opts Options) Model {
 	}
 	m.refresh()
 	m.started = opts.LoadErr == nil
+	if opts.Attached {
+		m.toast(components.ToastInfo, "Attached to the background RouteBox — q closes this panel only")
+	}
 	switch {
 	case opts.LoadErr != nil:
 		m.modal = modalConfigError
@@ -156,7 +185,7 @@ func (m Model) needsOnboarding() bool {
 
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{tick(), waitEvent(m.events)}
-	if m.started {
+	if m.started && m.opts.Start != nil {
 		cmds = append(cmds, startCmd(m.opts.Start))
 	}
 	return tea.Batch(cmds...)

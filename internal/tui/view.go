@@ -58,15 +58,23 @@ func (m Model) layout() layout {
 }
 
 func (m Model) helpEntries() []components.HelpEntry {
+	quit := m.t("quit")
+	if m.opts.Attached {
+		quit = m.t("close")
+	}
 	return []components.HelpEntry{
 		{Key: "a", Desc: m.t("add")}, {Key: "v", Desc: m.t("via")}, {Key: "e", Desc: m.t("edit")},
 		{Key: "d", Desc: m.t("delete")}, {Key: "s", Desc: m.t("upstreams")}, {Key: "p", Desc: m.t("preset")},
 		{Key: "r", Desc: m.t("restart")}, {Key: "l", Desc: m.t("logs")}, {Key: "L", Desc: m.t("language")},
-		{Key: "?", Desc: m.t("help")}, {Key: "q", Desc: m.t("quit")},
+		{Key: "?", Desc: m.t("help")}, {Key: "q", Desc: quit},
 	}
 }
 
 func (m Model) helpDetails() []components.HelpEntry {
+	quit := m.t("quit (stops ssh tunnels)")
+	if m.opts.Attached {
+		quit = m.t("close this panel (RouteBox keeps running)")
+	}
 	return []components.HelpEntry{
 		{Key: "↑/k ↓/j", Desc: m.t("move selection / scroll log")},
 		{Key: "tab", Desc: m.t("switch focus between routes and log")},
@@ -80,7 +88,7 @@ func (m Model) helpDetails() []components.HelpEntry {
 		{Key: "l", Desc: m.t("show / hide the connection log")},
 		{Key: "L", Desc: m.t("switch language (English / 한국어)")},
 		{Key: "g / G", Desc: m.t("jump to top / bottom")},
-		{Key: "q, ctrl+c", Desc: m.t("quit (stops ssh tunnels)")},
+		{Key: "q, ctrl+c", Desc: quit},
 	}
 }
 

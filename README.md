@@ -94,9 +94,32 @@ Or build from source ([Build](#5-build)). The result is a single static binary (
 
 If macOS Gatekeeper blocks a downloaded binary: `xattr -d com.apple.quarantine routebox`.
 
+### Run in the background
+
+Once Firefox points at RouteBox, **every** site fails with "The proxy server is refusing connections" while RouteBox is not running. Register it as a per-user service so it starts at login and restarts if it crashes:
+
+```sh
+routebox service install     # macOS: launchd LaunchAgent · Linux: systemd --user unit
+```
+
+After that, running `routebox` opens the TUI as a **management panel** for the background instance: every change goes to it over the control socket, and `q` closes only the panel while the proxy and ssh tunnels keep running. The CLI commands (`route`, `upstream`, `status`, …) talk to it the same way.
+
+```sh
+routebox service status      # installed? running? where is the log?
+routebox service restart     # e.g. after replacing the binary
+routebox service stop        # until the next login (or `routebox service start`)
+routebox service uninstall   # stop and remove from login
+```
+
+- The service runs `routebox --no-tui --config <absolute path>` with the config path and `PATH` of the shell you ran `install` from. If you use `--config` or `ROUTEBOX_CONFIG`, pass the same one to `install` and to `routebox` when you attach. Run `install` again after moving the binary or the config.
+- Logs: macOS writes `~/Library/Logs/RouteBox/routebox.log` (rotated at 10 MB, one `.1` backup kept); Linux uses the journal (`journalctl --user -u routebox`).
+- If RouteBox is already running in a terminal when you install, the service keeps retrying and takes over within about 10 seconds after you quit it. Each retry adds an `another RouteBox instance is already running` line to `~/Library/Logs/RouteBox/stderr.log` on macOS, so don't leave a terminal instance running alongside the service.
+- ssh runs without a terminal, so it cannot ask for a passphrase or confirm a host key. Use keys that are in an agent (macOS: `UseKeychain yes` + `AddKeysToAgent yes`, or an `IdentityAgent` such as 1Password) and connect once with `ssh <host>` beforehand. On Linux, `systemd --user` services do not inherit `SSH_AUTH_SOCK` from your shell; see [Troubleshooting](#14-troubleshooting).
+- A process manager or login item of your own works too: run `routebox --no-tui` (optionally with `--log-file`).
+
 ### Updating
 
-1. Quit the running instance: `q` in the TUI, or `Ctrl+C` for `--no-tui`. `routebox status` should print `RouteBox   not running`.
+1. Quit the running instance: `q` in the TUI, or `Ctrl+C` for `--no-tui`. `routebox status` should print `RouteBox   not running`. With the [background service](#run-in-the-background) you can skip this step.
 2. Optionally back up `config.json` ([Configuration](#13-configuration)).
 3. Replace the binary the same way you installed it:
 
@@ -106,7 +129,7 @@ If macOS Gatekeeper blocks a downloaded binary: `xattr -d com.apple.quarantine r
    git pull && make build   # then copy bin/routebox over the old binary
    ```
 
-4. Start `routebox` again. Routes and upstreams are kept in the config file, and configs from older versions are migrated when loaded.
+4. Start `routebox` again, or run `routebox service restart` for the background service (it keeps running the old binary until restarted). Routes and upstreams are kept in the config file, and configs from older versions are migrated when loaded.
 
 `routebox --version` shows the version for `make build` binaries (from `git describe`); `go install` builds report `dev`.
 
@@ -134,6 +157,8 @@ Every build target uses `CGO_ENABLED=0`; only `make race` enables cgo, because t
 6. **OK**.
 
 Firefox sends HTTPS as `CONNECT host:443`, so RouteBox routes on the hostname alone. Wording varies between Firefox versions and languages.
+
+> While RouteBox is not running, Firefox cannot load any page through this proxy. Install the [background service](#run-in-the-background) so it is always there.
 
 > Setting the proxy only in Firefox keeps other apps out of RouteBox. To cover every app that honours the system proxy, set the same address in your OS proxy settings instead (macOS: System Settings → Network → Details → Proxies → Web Proxy (HTTP) and Secure Web Proxy (HTTPS)).
 
@@ -253,7 +278,7 @@ routebox --preset <name>        # add before starting
 | `g` / `G` | Top / bottom |
 | `?` | Help |
 | `esc` | Close a dialog |
-| `q`, `ctrl+c` | Quit (stops ssh tunnels; press again to quit immediately) |
+| `q`, `ctrl+c` | Quit (stops ssh tunnels; press again to quit immediately). When attached to a [background instance](#run-in-the-background), closes only the panel |
 
 The layout adapts to the terminal: side-by-side panels from 96 columns, Routes first below that (`l` switches to the log), a one-line footer below 22 rows, and a "Terminal too small" notice below 50×14.
 
@@ -262,8 +287,9 @@ The layout adapts to the terminal: side-by-side panels from 96 columns, Routes f
 ## 12. CLI
 
 ```sh
-routebox                                   # TUI
-routebox --no-tui                          # headless; logs events to stdout
+routebox                                   # TUI (attaches as a management panel if RouteBox is already running)
+routebox --no-tui                          # headless; logs events to stderr
+routebox --no-tui --log-file PATH          # headless; log to a file rotated at 10 MB
 routebox --listen 127.0.0.1:8080           # this run only (not saved)
 routebox --socks 127.0.0.1:1081            # first upstream's SOCKS, this run only
 routebox --lang ko                         # TUI language, this run only
@@ -284,9 +310,12 @@ routebox preset add <name> --via seoul
 routebox status                            # --json; exit code 1 when not running
 routebox ssh status [upstream]             # state + recent ssh stderr
 routebox ssh restart [upstream]
+
+routebox service install|uninstall         # run at login (launchd / systemd --user)
+routebox service start|stop|restart|status
 ```
 
-The CLI and the TUI share the same core (`internal/core`). When RouteBox is running, the CLI talks to it over a control socket and changes apply immediately. When it is not, the CLI edits the config file through the same code and changes apply on the next start. A second instance using the same config directory refuses to start, which also prevents duplicate ssh processes.
+The CLI and the TUI share the same core (`internal/core`). When RouteBox is running, the CLI talks to it over a control socket and changes apply immediately. When it is not, the CLI edits the config file through the same code and changes apply on the next start. A second instance using the same config directory refuses to start, which also prevents duplicate ssh processes; running `routebox` (the TUI) instead attaches to the running instance, and `--listen`/`--socks` are rejected because they only apply at start.
 
 ## 13. Configuration
 
@@ -328,6 +357,9 @@ Override with `--config <path>` or `ROUTEBOX_CONFIG`.
 
 | Symptom | Cause and fix |
 |---|---|
+| Firefox: "The proxy server is refusing connections" on every site | RouteBox is not running. Start it, or install the [background service](#run-in-the-background). |
+| Tunnel works from the TUI but fails as a service | The service has no terminal: a passphrase-protected key not in an agent, or an unknown host key, cannot be answered. See [Run in the background](#run-in-the-background) and check the service log. |
+| Service on Linux: `Permission denied (publickey)` | `systemd --user` does not see your shell's `SSH_AUTH_SOCK`. Set `IdentityAgent` in `~/.ssh/config`, or run `systemctl --user import-environment SSH_AUTH_SOCK` in your login session and `routebox service restart`. |
 | `Host key verification failed` | First connection to this server. Run `ssh <host>` once in a terminal to verify and store the key. RouteBox never accepts host keys automatically. |
 | `Permission denied (publickey)` | Key not authorised on the server, or a passphrase-protected key is not in the agent. `ssh-add ~/.ssh/id_ed25519`, then `r`. |
 | `Permission denied (publickey)` although the key is in `ssh-agent` | `~/.ssh/config` sets `IdentityAgent` (e.g. 1Password), so ssh asks that agent instead of `SSH_AUTH_SOCK`. Add the key to that agent, or set `IdentityAgent` for this host. `ssh -v <host>` shows which agent and keys are tried. |
@@ -357,13 +389,14 @@ Status badge:
 - Logs, the TUI and events record **`host:port` only** — never URL paths, query strings or headers (Authorization, Proxy-Authorization, Cookie). Plain-HTTP forwarding drops hop-by-hop headers such as `Proxy-Authorization`.
 - Private keys are never stored, only their path. There is no password-auth UI.
 - ssh hosts and users starting with `-` are rejected, and `--` precedes the host to prevent option injection.
-- The config file (`0600`) and control socket (`0600` in a `0700` directory) are private to your account.
+- The config file (`0600`) and control socket (`0600` in a `0700` directory) are private to your account. Anyone who can use the control socket controls RouteBox, which is why it is not exposed over TCP.
+- The background service on macOS logs every connection's `host:port` to `~/Library/Logs/RouteBox/routebox.log` (`0600`, rotated at 10 MB with one backup). `routebox service uninstall` leaves the log in place; delete the folder yourself if you stop using the service.
 - Keep in mind: browser features that bypass the proxy (DNS-over-HTTPS, prefetching) and apps that ignore proxy settings do not go through RouteBox. UDP traffic such as WebRTC cannot pass through an HTTP proxy.
 
 ## 16. Architecture
 
 ```
-cmd/routebox/          Cobra CLI; assembles TUI / --no-tui modes; control-socket client
+cmd/routebox/          Cobra CLI; assembles TUI / --no-tui / attached modes; control-socket client
 internal/
   core/                App: ties config, router, proxy, per-upstream ssh, stats, events together
                        (TUI, CLI and control socket all call the same methods)
@@ -373,7 +406,10 @@ internal/
   socks/               minimal SOCKS5 client (hostnames always as ATYP 0x03)
     sockstest/         in-process SOCKS5 server for tests (records addresses exactly as received)
   ssh/                 supervises one ssh child: readiness, reconnect, termination and reaping
-  control/             HTTP API over a unix socket + single-instance lock
+  control/             HTTP API over a unix socket + single-instance lock; NDJSON event stream;
+                       Remote (snapshot-polling Backend for a TUI attached to a running instance)
+  service/             launchd LaunchAgent / systemd --user unit generation and control
+  logfile/             size-rotated log file for the background service
   events/              non-blocking event bus (a slow subscriber loses events; the proxy never blocks)
   stats/               atomic counters
   logbuf/              generic ring buffer (last 500 connections)
@@ -386,7 +422,7 @@ internal/
           ┌──────────── TUI ────────────┐      ┌──── CLI ─────┐
           │ Bubble Tea (events + polls) │      │ route/…/ssh  │
           └──────────────┬──────────────┘      └──────┬───────┘
-                         │ method calls               │ unix socket (running)
+                         │ calls or unix socket       │ unix socket (running)
                          ▼                            ▼ or direct calls (not running)
  ┌──────────────────────────────── core.App ────────────────────────────────┐
  │ config.Store ─► router.Router (atomic swap)                                │

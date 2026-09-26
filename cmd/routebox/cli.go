@@ -32,7 +32,9 @@ func newRootCmd() *cobra.Command {
 		Long: `RouteBox runs a local HTTP CONNECT proxy. Each domain you register is sent
 through the upstream you pick (an SSH SOCKS5 tunnel or an existing SOCKS5
 server), with hostnames resolved on the remote side. Everything else connects
-directly. Without a subcommand it starts the TUI.`,
+directly. Without a subcommand it starts the TUI; if RouteBox is already
+running (for example as a background service), the TUI attaches to it as a
+management panel and quitting the panel leaves RouteBox running.`,
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -42,10 +44,11 @@ directly. Without a subcommand it starts the TUI.`,
 		},
 	}
 	root.PersistentFlags().StringVar(&configPath, "config", os.Getenv("ROUTEBOX_CONFIG"), "config file path (default: user config dir/routebox/config.json)")
-	root.Flags().BoolVar(&f.noTUI, "no-tui", false, "run headless and log to stdout")
+	root.Flags().BoolVar(&f.noTUI, "no-tui", false, "run headless and log to stderr")
 	root.Flags().StringVar(&f.listen, "listen", "", "HTTP proxy listen address for this run (not saved), e.g. 127.0.0.1:8080")
 	root.Flags().StringVar(&f.socks, "socks", "", "SOCKS5 address of the first upstream for this run (not saved)")
 	root.Flags().StringSliceVar(&f.presets, "preset", nil, "add a route preset before starting (see `routebox preset list`)")
+	root.Flags().StringVar(&f.logFile, "log-file", "", "with --no-tui: log to this file (rotated at 10 MB) instead of stderr")
 	root.Flags().StringVar(&f.lang, "lang", "", "TUI language for this run: en or ko (default: saved setting, then $LANG)")
 
 	root.AddCommand(
@@ -54,6 +57,7 @@ directly. Without a subcommand it starts the TUI.`,
 		newPresetCmd(&configPath),
 		newSSHCmd(&configPath),
 		newStatusCmd(&configPath),
+		newServiceCmd(&configPath),
 	)
 	return root
 }

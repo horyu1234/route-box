@@ -34,6 +34,17 @@ func (s ConnState) String() string {
 
 func (s ConnState) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
 
+func (s *ConnState) UnmarshalText(b []byte) error {
+	for st := ConnOpen; st <= ConnFailed; st++ {
+		if st.String() == string(b) {
+			*s = st
+			return nil
+		}
+	}
+	*s = ConnOpen
+	return nil
+}
+
 // ConnectionEvent 는 하나의 CONNECT 터널 또는 일반 HTTP 요청을 기술한다.
 // host 와 port 만 담을 뿐, path·query string·헤더는 절대 담지 않는다.
 type ConnectionEvent struct {
