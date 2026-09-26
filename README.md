@@ -44,6 +44,7 @@ Point your browser at `127.0.0.1:8080` once. From then on, you decide in a termi
 14. [Troubleshooting](#14-troubleshooting)
 15. [Security](#15-security)
 16. [Architecture](#16-architecture)
+17. [License](#license)
 
 ## 1. What it does
 
@@ -400,3 +401,7 @@ Known limitations:
 - macOS has no equivalent of Linux's `Pdeathsig`, so if RouteBox is killed with `kill -9` its ssh children may survive. Normal exit, SIGTERM, SIGINT and SIGHUP always clean up.
 - Plain-HTTP `Upgrade` (unencrypted `ws://`) is not supported. HTTPS and `wss://` use CONNECT and work.
 - SOCKS5 username/password authentication is not supported (no-auth only, which is what `ssh -D` provides).
+
+## License
+
+[MIT](LICENSE). Release binaries also include third-party code under MIT, BSD-3-Clause and Apache-2.0 licenses (Charmbracelet libraries, Cobra, golang.org/x). Security issues: see [SECURITY.md](SECURITY.md).

@@ -44,6 +44,7 @@
 14. [문제 해결](#14-문제-해결)
 15. [보안](#15-보안)
 16. [아키텍처](#16-아키텍처)
+17. [라이선스](#라이선스)
 
 ## 1. 하는 일
 
@@ -400,3 +401,7 @@ internal/
 - macOS 에는 Linux 의 `Pdeathsig` 가 없어서, RouteBox 가 `kill -9` 로 죽으면 ssh 자식이 남을 수 있습니다. 정상 종료, SIGTERM, SIGINT, SIGHUP 에서는 항상 정리됩니다.
 - 일반 HTTP 의 `Upgrade`(암호화되지 않은 `ws://`)는 지원하지 않습니다. HTTPS 와 `wss://` 는 CONNECT 라 문제없습니다.
 - SOCKS5 사용자/비밀번호 인증은 지원하지 않습니다(`ssh -D` 가 쓰는 no-auth 전용).
+
+## 라이선스
+
+[MIT](LICENSE). 배포 바이너리에는 MIT, BSD-3-Clause, Apache-2.0 라이선스의 서드파티 코드(Charmbracelet 라이브러리, Cobra, golang.org/x)가 포함됩니다. 보안 문제 제보는 [SECURITY.md](SECURITY.md) 를 참고하세요.
