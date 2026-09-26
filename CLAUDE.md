@@ -1,0 +1,24 @@
+# RouteBox
+
+## Commands
+- `make build|test|race|lint|cross` - builds use CGO_ENABLED=0; only `make race` enables cgo
+- `go test -race ./...` - full suite; CI runs gofmt, vet, race tests and cross builds on ubuntu + macos
+
+## Invariants (tests enforce these; run the mutation idea before trusting a green run)
+- Proxied routes must never resolve hostnames locally; pass the name to SOCKS as ATYP 0x03 (proxy_test counting-resolver + `*.invalid` checks)
+- Unknown/down upstream → 502; never fall back to another upstream or direct
+- `direct` is a reserved upstream name; `Config.Normalize` pins empty-via proxy routes to the first upstream; `RemoveUpstream` refuses while routes use it
+- All mutations go through `core.App`; the CLI uses the control socket when an instance is running, else the same core code on the config file
+
+## Testing patterns
+- Fake ssh = the test binary itself via `ROUTEBOX_FAKE_SSH` in `TestMain` (ssh, core packages); fake SOCKS = `internal/socks/sockstest`
+- Unix socket paths max ~104 bytes: use short dirs (`os.MkdirTemp("/tmp", …)`) for sockets in tests
+- TUI strings: every `T`/`t`/`toast` literal needs a `ko.go` entry (source-scan test); non-literal keys (badges, preset categories, `core.Warnings`, `core.MigratedNotice`) go in `TestIndirectKeysHaveKorean`
+- Layout test must fit every size in both en and ko (Korean is double-width)
+- Driving the real TUI in a pty: Bubble Tea's `init` queries the terminal (OSC 11, CSI 6n); the harness must answer or startup stalls and eats keystrokes
+
+## Conventions
+- Tests and docs use RFC 2606 names (example.com/org/net); service names appear only in `internal/router/preset.go`
+- Commit messages in English
+- Pin GitHub Actions by commit SHA
+- README.md (English) and README_ko.md (Korean) must stay in sync

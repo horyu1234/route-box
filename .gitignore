@@ -19,3 +19,6 @@ config.json.bak-*
 .vscode/
 *.swp
 .DS_Store
+
+# 로컬 전용 Claude 메모
+.claude.local.md
