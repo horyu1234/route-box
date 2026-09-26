@@ -467,9 +467,13 @@ func (m Model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "y", "Y", "enter":
 			if err := m.app.RemoveUpstream(m.deleting); err != nil {
-				if errors.Is(err, core.ErrUpstreamInUse) {
-					m.toast(components.ToastError, "%s is used by %d route(s) — move them with v first", m.deleting, m.app.Config().RoutesVia(m.deleting))
-				} else {
+				cfg := m.app.Config()
+				switch {
+				case errors.Is(err, core.ErrUpstreamInUse) && cfg.RoutesVia(m.deleting) > 0:
+					m.toast(components.ToastError, "%s is used by %d route(s) — move them with v first", m.deleting, cfg.RoutesVia(m.deleting))
+				case errors.Is(err, core.ErrUpstreamInUse) && cfg.Fallback == m.deleting:
+					m.toast(components.ToastError, "Unmatched traffic goes via %s — change \"everything else\" with v first", m.deleting)
+				default:
 					m.toast(components.ToastError, "%v", err)
 				}
 			} else {

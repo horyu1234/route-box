@@ -343,6 +343,20 @@ func TestUpstreamInUseCannotBeDeleted(t *testing.T) {
 	}
 }
 
+func TestFallbackUpstreamCannotBeDeleted(t *testing.T) {
+	m := newModel(t, func(c *config.Config) {
+		twoUpstreams(c)
+		c.Fallback = "seoul"
+	})
+	m = press(t, m, "s", "d", "y")
+	if _, ok := m.app.Config().Upstream("seoul"); !ok {
+		t.Fatal("fallback upstream was deleted")
+	}
+	if !strings.Contains(plain(m.View()), "change \"everything else\" with v first") {
+		t.Fatalf("no explanation shown:\n%s", plain(m.View()))
+	}
+}
+
 func TestLanguageToggleTranslatesAndPersists(t *testing.T) {
 	m := newModel(t, twoUpstreams)
 	if !strings.Contains(plain(m.View()), "ROUTES") {
