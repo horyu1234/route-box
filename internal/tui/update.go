@@ -124,11 +124,16 @@ func (m *Model) onSSH(name string, st ssh.Status) {
 			m.finishOnboarding(false, st.Err)
 			return
 		}
-		if ssh.IsHostKeyFailure(st.Err) {
+		switch ssh.ClassifyFailure(st.Err) {
+		case ssh.FailHostKey:
 			m.toast(components.ToastError, "%s: unknown host key — press s, then t to check it", name)
-			return
+		case ssh.FailAuth:
+			m.toast(components.ToastError, "%s: SSH login rejected — check the key or agent, then press r", name)
+		case ssh.FailRefused:
+			m.toast(components.ToastWarn, "%s: the server is refusing connections for now (often after failed logins); retrying slowly", name)
+		default:
+			m.toast(components.ToastError, "%s: SSH tunnel failed: %s", name, st.Err)
 		}
-		m.toast(components.ToastError, "%s: SSH tunnel failed: %s", name, st.Err)
 	}
 }
 
@@ -759,7 +764,7 @@ func (m Model) upstreamForm(title string, u config.Upstream, full bool) *compone
 		components.TextField("host", m.t("SSH Host"), u.Host, "proxy-seoul", m.t("a Host alias from ~/.ssh/config or a hostname")),
 		components.TextField("user", m.t("SSH User"), u.User, m.t("optional"), m.t("empty = from ~/.ssh/config")),
 		components.TextField("port", m.t("SSH Port"), port, m.t("optional"), m.t("empty = from ~/.ssh/config (usually 22)")),
-		components.TextField("identity", m.t("Identity File"), u.IdentityFile, "~/.ssh/id_ed25519", m.t("path only; the key itself is never stored")),
+		components.TextField("identity", m.t("Identity File"), u.IdentityFile, "~/.ssh/id_ed25519", m.t("empty = ssh's default keys and agent; path only")),
 	}
 	if full {
 		sshFields = append(sshFields, components.ChoiceField("reconnect", m.t("Reconnect"), []string{m.t("yes"), m.t("no")}, rc,

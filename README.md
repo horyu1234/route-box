@@ -174,8 +174,8 @@ On first launch the TUI asks for your first upstream. Afterwards press **`s`** t
 | Name | Used by routes (`seoul`, `work`, `lab` …). Leave empty to derive it from the host. `direct` is reserved. |
 | SSH Host | A `Host` alias from `~/.ssh/config`, or a hostname |
 | SSH User / SSH Port | Optional; empty means "whatever `~/.ssh/config` says" |
-| Identity File | Optional. Only the **path** is stored, never the key |
-| Reconnect | Restart ssh with exponential backoff (1s → 30s) when it exits |
+| Identity File | Optional. Empty means ssh chooses: `IdentityFile` from `~/.ssh/config`, the agent's keys, then the default `~/.ssh/id_*`. The placeholder is only an example. Only the **path** is stored, never the key |
+| Reconnect | Restart ssh when it exits: a dropped tunnel retries with exponential backoff (1s → 30s); a rejected login, an untrusted host key or a server refusing connections waits 30s from the first retry, because retrying sooner cannot help and repeated failed logins get your IP blocked by sshd |
 | Local SOCKS | Where `ssh -D` listens. Must be different for every upstream; the next free `127.0.0.1:10xx` is suggested |
 
 The command RouteBox runs:
@@ -373,6 +373,7 @@ Override with `--config <path>` or `ROUTEBOX_CONFIG`.
 | Service on Linux: `Permission denied (publickey)` | `systemd --user` does not see your shell's `SSH_AUTH_SOCK`. Set `IdentityAgent` in `~/.ssh/config`, or run `systemctl --user import-environment SSH_AUTH_SOCK` in your login session and `routebox service restart`. |
 | `Host key verification failed` | The server's host key is not in `known_hosts` yet. Press `s`, select the upstream, press `t`, compare the fingerprint and press `y` (or `routebox ssh trust <upstream>`). See [Host keys](#host-keys). |
 | `Permission denied (publickey)` | Key not authorised on the server, or a passphrase-protected key is not in the agent. `ssh-add ~/.ssh/id_ed25519`, then `r`. |
+| `Connection closed by <ip> port <n>` (server log: `drop connection … penalty`) | sshd (OpenSSH 9.8+ `PerSourcePenalties`, or fail2ban) is temporarily refusing your IP after failed logins. It clears by itself within minutes; fix the login first. If the server has many keys offered to it, set `IdentitiesOnly yes` and the right `IdentityFile` for this host. On a server you run, `PerSourcePenaltyExemptList` can exempt a fixed client IP. |
 | `Permission denied (publickey)` although the key is in `ssh-agent` | `~/.ssh/config` sets `IdentityAgent` (e.g. 1Password), so ssh asks that agent instead of `SSH_AUTH_SOCK`. Add the key to that agent, or set `IdentityAgent` for this host. `ssh -v <host>` shows which agent and keys are tried. |
 | `Could not resolve hostname` | Typo in the host or missing `~/.ssh/config` entry. Check with `ssh -G <host>`. |
 | `SOCKS port already in use` | Another `ssh -D` already listens there. Add it as an external upstream, or give this upstream a different Local SOCKS address. |

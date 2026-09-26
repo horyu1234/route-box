@@ -174,8 +174,8 @@ managed 업스트림마다 RouteBox 가 `ssh -N -D` 프로세스를 하나씩 �
 | 이름 | 라우트가 가리키는 이름(`seoul`, `work`, `lab` …). 비우면 호스트에서 자동으로 짓습니다. `direct` 는 예약어입니다. |
 | SSH 호스트 | `~/.ssh/config` 의 `Host` 별칭 또는 호스트명 |
 | SSH 사용자 / SSH 포트 | 선택. 비우면 `~/.ssh/config` 값을 따릅니다 |
-| 키 파일 | 선택. **경로만** 저장하고 키 내용은 저장하지 않습니다 |
-| 자동 재연결 | ssh 가 끊기면 지수 백오프(1초 → 30초)로 다시 시작합니다 |
+| 키 파일 | 선택. 비우면 ssh 가 정합니다: `~/.ssh/config` 의 `IdentityFile`, agent 의 키, 기본 `~/.ssh/id_*` 순입니다. 입력 칸의 회색 글자는 예시일 뿐입니다. **경로만** 저장하고 키 내용은 저장하지 않습니다 |
+| 자동 재연결 | ssh 가 종료되면 다시 시작합니다. 연결이 끊긴 경우는 지수 백오프(1초 → 30초)로, 로그인 거절·신뢰하지 않은 호스트 키·서버의 접속 거부는 첫 재시도부터 30초 간격으로 합니다. 이런 실패는 빨리 다시 시도해도 풀리지 않고, 로그인 실패가 반복되면 sshd 가 IP 를 막기 때문입니다 |
 | 로컬 SOCKS | `ssh -D` 가 열 주소. 업스트림마다 달라야 하며, 비어 있는 `127.0.0.1:10xx` 를 자동으로 제안합니다 |
 
 실제로 실행하는 명령:
@@ -373,6 +373,7 @@ CLI 와 TUI 는 같은 코어(`internal/core`)를 씁니다. RouteBox 가 실행
 | Linux 서비스에서 `Permission denied (publickey)` | `systemd --user` 는 셸의 `SSH_AUTH_SOCK` 을 모릅니다. `~/.ssh/config` 에 `IdentityAgent` 를 지정하거나, 로그인 세션에서 `systemctl --user import-environment SSH_AUTH_SOCK` 을 실행한 뒤 `routebox service restart`. |
 | `Host key verification failed` | 서버의 호스트 키가 아직 `known_hosts` 에 없습니다. `s` 에서 업스트림을 골라 `t` 를 누르고, 지문을 비교한 뒤 `y` 를 누르세요(또는 `routebox ssh trust <업스트림>`). [호스트 키](#호스트-키) 참고. |
 | `Permission denied (publickey)` | 키가 서버에 등록되지 않았거나, 비밀번호 걸린 키가 agent 에 없습니다. `ssh-add ~/.ssh/id_ed25519` 후 `r`. |
+| `Connection closed by <ip> port <n>` (서버 로그: `drop connection … penalty`) | 로그인 실패가 쌓여 sshd(OpenSSH 9.8+ 의 `PerSourcePenalties` 또는 fail2ban)가 잠시 이 IP 를 거부하고 있습니다. 몇 분 안에 저절로 풀리니 로그인 문제부터 해결하세요. 여러 키를 내밀고 있다면 이 호스트에 `IdentitiesOnly yes` 와 맞는 `IdentityFile` 을 지정하세요. 직접 운영하는 서버라면 `PerSourcePenaltyExemptList` 로 고정 IP 를 예외 처리할 수 있습니다. |
 | 키를 `ssh-agent` 에 올렸는데도 `Permission denied (publickey)` | `~/.ssh/config` 에 `IdentityAgent`(예: 1Password)가 있으면 ssh 는 `SSH_AUTH_SOCK` 대신 그 agent 에 묻습니다. 그 agent 에 키를 넣거나 이 호스트에 맞는 `IdentityAgent` 를 지정하세요. 어떤 agent 와 키를 시도하는지는 `ssh -v <호스트>` 로 볼 수 있습니다. |
 | `Could not resolve hostname` | 호스트 오타나 `~/.ssh/config` 누락입니다. `ssh -G <호스트>` 로 확인하세요. |
 | `SOCKS port already in use` | 다른 `ssh -D` 가 이미 그 포트를 씁니다. 그것을 external 업스트림으로 추가하거나, 이 업스트림의 로컬 SOCKS 주소를 바꾸세요. |

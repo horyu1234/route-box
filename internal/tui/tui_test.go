@@ -625,3 +625,41 @@ func TestHostKeyModalFitsAndNeverTruncatesTheFingerprint(t *testing.T) {
 		}
 	}
 }
+
+func TestSSHFailureToastsSayWhatToDo(t *testing.T) {
+	for err, want := range map[string]string{
+		"me@example.com: Permission denied (publickey). (exit status 255)": "seoul: SSH login rejected — check the key or agent, then press r",
+		"Connection closed by 192.0.2.1 port 40056 (exit status 255)":      "seoul: the server is refusing connections for now",
+		"ssh: connect to host example.com port 22: Connection refused":     "seoul: SSH tunnel failed: ssh: connect to host",
+	} {
+		m := newModel(t, twoUpstreams)
+		next, _ := m.Update(eventMsg{events.SSHStateChanged{Upstream: "seoul", Status: ssh.Status{State: ssh.StateReconnecting, Err: err}}})
+		if v := plain(next.(Model).View()); !strings.Contains(v, want) {
+			t.Errorf("%q: toast missing %q", err, want)
+		}
+	}
+}
+
+func TestUpstreamFormsExplainEmptyIdentityAndFit(t *testing.T) {
+	for _, lang := range []string{"en", "ko"} {
+		m := newModel(t, twoUpstreams, func(o *Options) { o.Lang = lang })
+		forms := map[string]Model{
+			"add":        press(t, m, "s", "a"),
+			"edit":       press(t, m, "s", "enter"),
+			"onboarding": press(t, newModel(t, nil, func(o *Options) { o.Lang = lang }), "enter"),
+		}
+		for name, fm := range forms {
+			if fm.form == nil && fm.onboard.form == nil {
+				t.Fatalf("%s %s: no form open", lang, name)
+			}
+			for _, size := range [][2]int{{160, 48}, {120, 36}, {96, 24}, {80, 24}, {60, 18}, {50, 14}} {
+				assertFits(t, resize(fm, size[0], size[1]), lang+" upstream form "+name)
+			}
+		}
+	}
+	// 폼은 포커스된 필드의 도움말만 보여 준다: Identity File 까지 내려가서 확인한다.
+	m := press(t, newModel(t, twoUpstreams), "s", "a", "tab", "tab", "tab", "tab", "tab")
+	if v := plain(m.View()); !strings.Contains(v, "empty = ssh's default keys and agent; path only") {
+		t.Errorf("identity hint not shown:\n%s", v)
+	}
+}

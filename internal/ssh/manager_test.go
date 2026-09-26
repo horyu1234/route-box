@@ -307,3 +307,40 @@ func TestBackoff(t *testing.T) {
 		}
 	}
 }
+
+// 로그인 거절은 다시 시도해도 풀리지 않고, 짧은 간격으로 반복하면 sshd 의
+// PerSourcePenalties 같은 차단을 부른다. 그래서 첫 재시도부터 최대 간격을 쓴다.
+func TestAuthFailureRetriesAtMaxBackoff(t *testing.T) {
+	_, rec, _, _, _ := startManager(t, "authfail", true)
+	st := rec.waitFor(t, func(s Status) bool { return s.State == StateReconnecting })
+	if st.Attempt != 1 || st.NextRetry.Sub(st.Since) < testTiming().BackoffMax-10*time.Millisecond {
+		t.Fatalf("first retry after an auth failure waits %v (attempt %d), want the max backoff %v",
+			st.NextRetry.Sub(st.Since), st.Attempt, testTiming().BackoffMax)
+	}
+}
+
+func TestTransientDisconnectRetriesQuickly(t *testing.T) {
+	_, rec, _, _, _ := startManager(t, "dieafter", true)
+	st := rec.waitFor(t, func(s Status) bool { return s.State == StateReconnecting })
+	if wait := st.NextRetry.Sub(st.Since); wait > testTiming().BackoffMin+20*time.Millisecond {
+		t.Fatalf("a dropped tunnel should come back quickly, waits %v", wait)
+	}
+}
+
+func TestClassifyFailure(t *testing.T) {
+	for msg, want := range map[string]Failure{
+		"Host key verification failed. (exit status 255)":                                 FailHostKey,
+		"horyu@example.com: Permission denied (publickey). (exit status 255)":             FailAuth,
+		"Received disconnect from 192.0.2.1 port 22:2: Too many authentication failures":  FailAuth,
+		"Connection closed by 192.0.2.1 port 40056 (exit status 255)":                     FailRefused,
+		"kex_exchange_identification: Connection closed by remote host":                   FailRefused,
+		"Connection reset by 192.0.2.1 port 22 (exit status 255)":                         FailRefused,
+		"Connection to example.com closed by remote host. (exit status 255)":              FailOther,
+		"ssh: connect to host example.com port 22: Connection refused (exit status 255)":  FailOther,
+		"ssh: Could not resolve hostname example.invalid: nodename nor servname provided": FailOther,
+	} {
+		if got := ClassifyFailure(msg); got != want {
+			t.Errorf("ClassifyFailure(%q) = %v, want %v", msg, got, want)
+		}
+	}
+}

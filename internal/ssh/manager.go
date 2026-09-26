@@ -279,6 +279,9 @@ func (l *loop) onExit(msg exitMsg) {
 func (l *loop) failed(err error) {
 	if l.cfg.Reconnect && l.cfg.Enabled {
 		delay := backoff(l.attempt, l.m.timing)
+		if ClassifyFailure(err.Error()).persistent() {
+			delay = l.m.timing.BackoffMax
+		}
 		l.cancelRetry()
 		l.retry = time.NewTimer(delay)
 		l.set(Status{State: StateReconnecting, Attempt: l.attempt, NextRetry: time.Now().Add(delay), Err: err.Error()})
