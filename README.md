@@ -93,7 +93,7 @@ brew install horyu1234/tap/routebox
 With Go (see `go.mod` for the required version), install the latest release tag:
 
 ```sh
-go install github.com/horyu1234/route-box/cmd/routebox@v0.3.0
+go install github.com/horyu1234/route-box/cmd/routebox@v0.3.1
 ```
 
 Always name the tag: `@latest` goes through the Go module proxy, which can keep serving the previous version for a while after a release. Newer releases are listed on the [tags page](https://github.com/horyu1234/route-box/tags); `routebox --version` prints the one you have.
@@ -134,14 +134,14 @@ routebox service uninstall   # stop and remove from login
    ```sh
    brew upgrade routebox
    # or, with Go:
-   go install github.com/horyu1234/route-box/cmd/routebox@v0.3.0
+   go install github.com/horyu1234/route-box/cmd/routebox@v0.3.1
    # or, from a source checkout:
    git pull && make build   # then copy bin/routebox over the old binary
    ```
 
 4. Start `routebox` again, or run `routebox service restart` for the background service (it keeps running the old binary until restarted). Routes and upstreams are kept in the config file, and configs from older versions are migrated when loaded.
 
-`routebox --version` shows the installed version: the release version for Homebrew and `go install` (e.g. `v0.3.0`), or `git describe` for `make build`.
+`routebox --version` shows the installed version: the release version for Homebrew and `go install` (e.g. `v0.3.1`), or `git describe` for `make build`.
 
 ## 5. Build
 
