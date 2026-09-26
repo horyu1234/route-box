@@ -147,7 +147,7 @@ ssh -N -D 127.0.0.1:1080 \
 ```
 
 - Empty fields are not passed, so `User`, `Port`, `IdentityFile`, `ProxyJump` and friends from `~/.ssh/config` keep working.
-- **Key-based auth only.** `BatchMode=yes` makes ssh fail instead of prompting for a password or a host key. Load passphrase-protected keys into `ssh-agent` first (`ssh-add`).
+- **Public-key authentication only.** `BatchMode=yes` makes ssh fail instead of prompting for a password or a host key. Any key ssh itself can use works: the **Identity File** field (`-i`), `IdentityFile` in `~/.ssh/config`, the default `~/.ssh/id_*` keys, and keys held by an agent — `ssh-agent` via `SSH_AUTH_SOCK`, or whatever `IdentityAgent` in `~/.ssh/config` points to (1Password, Secretive, …). Passphrase-protected keys must be loaded into an agent first (`ssh-add`), because ssh cannot ask for the passphrase.
 - ssh opens the `-D` port only after authentication, so an upstream counts as connected once a SOCKS greeting succeeds.
 - ssh's stderr shows up in TUI toasts, the upstream manager and `routebox ssh status`.
 - On exit, every ssh child gets SIGTERM (SIGKILL after 3 s) and is reaped — no zombies.
@@ -314,6 +314,7 @@ Override with `--config <path>` or `ROUTEBOX_CONFIG`.
 |---|---|
 | `Host key verification failed` | First connection to this server. Run `ssh <host>` once in a terminal to verify and store the key. RouteBox never accepts host keys automatically. |
 | `Permission denied (publickey)` | Key not authorised on the server, or a passphrase-protected key is not in the agent. `ssh-add ~/.ssh/id_ed25519`, then `r`. |
+| `Permission denied (publickey)` although the key is in `ssh-agent` | `~/.ssh/config` sets `IdentityAgent` (e.g. 1Password), so ssh asks that agent instead of `SSH_AUTH_SOCK`. Add the key to that agent, or set `IdentityAgent` for this host. `ssh -v <host>` shows which agent and keys are tried. |
 | `Could not resolve hostname` | Typo in the host or missing `~/.ssh/config` entry. Check with `ssh -G <host>`. |
 | `SOCKS port already in use` | Another `ssh -D` already listens there. Add it as an external upstream, or give this upstream a different Local SOCKS address. |
 | `SOCKS address already used by another upstream` | Each upstream needs its own SOCKS address. |

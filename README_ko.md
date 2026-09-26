@@ -147,7 +147,7 @@ ssh -N -D 127.0.0.1:1080 \
 ```
 
 - 비어 있는 필드는 인자로 넘기지 않으므로 `~/.ssh/config` 의 `User`, `Port`, `IdentityFile`, `ProxyJump` 등이 그대로 적용됩니다.
-- **키 인증 전용**입니다. `BatchMode=yes` 라서 비밀번호나 호스트 키 확인을 묻지 않고 실패합니다. 비밀번호가 걸린 키는 먼저 `ssh-agent` 에 올려 두세요(`ssh-add`).
+- **공개키 인증 전용**입니다. `BatchMode=yes` 라서 비밀번호나 호스트 키 확인을 묻지 않고 실패합니다. ssh 가 쓸 수 있는 키는 모두 됩니다. **키 파일** 필드(`-i`), `~/.ssh/config` 의 `IdentityFile`, 기본 `~/.ssh/id_*` 키, 그리고 agent 에 올린 키(`SSH_AUTH_SOCK` 의 `ssh-agent`, 또는 `~/.ssh/config` 의 `IdentityAgent` 가 가리키는 1Password·Secretive 등)입니다. 비밀번호가 걸린 키는 ssh 가 비밀번호를 물을 수 없으므로 먼저 agent 에 올려 두세요(`ssh-add`).
 - ssh 는 인증이 끝난 뒤에야 `-D` 포트를 엽니다. 그래서 SOCKS 인사가 성공해야 연결됨으로 봅니다.
 - ssh 의 stderr 는 TUI 토스트, 업스트림 관리 창, `routebox ssh status` 에 표시됩니다.
 - 종료할 때 모든 ssh 자식에 SIGTERM(3초 뒤 SIGKILL)을 보내고 회수합니다. 좀비가 남지 않습니다.
@@ -314,6 +314,7 @@ CLI 와 TUI 는 같은 코어(`internal/core`)를 씁니다. RouteBox 가 실행
 |---|---|
 | `Host key verification failed` | 처음 접속하는 서버입니다. 터미널에서 `ssh <호스트>` 를 한 번 실행해 키를 확인하고 저장하세요. RouteBox 는 호스트 키를 자동으로 수락하지 않습니다. |
 | `Permission denied (publickey)` | 키가 서버에 등록되지 않았거나, 비밀번호 걸린 키가 agent 에 없습니다. `ssh-add ~/.ssh/id_ed25519` 후 `r`. |
+| 키를 `ssh-agent` 에 올렸는데도 `Permission denied (publickey)` | `~/.ssh/config` 에 `IdentityAgent`(예: 1Password)가 있으면 ssh 는 `SSH_AUTH_SOCK` 대신 그 agent 에 묻습니다. 그 agent 에 키를 넣거나 이 호스트에 맞는 `IdentityAgent` 를 지정하세요. 어떤 agent 와 키를 시도하는지는 `ssh -v <호스트>` 로 볼 수 있습니다. |
 | `Could not resolve hostname` | 호스트 오타나 `~/.ssh/config` 누락입니다. `ssh -G <호스트>` 로 확인하세요. |
 | `SOCKS port already in use` | 다른 `ssh -D` 가 이미 그 포트를 씁니다. 그것을 external 업스트림으로 추가하거나, 이 업스트림의 로컬 SOCKS 주소를 바꾸세요. |
 | `SOCKS address already used by another upstream` | 업스트림마다 SOCKS 주소가 달라야 합니다. |
