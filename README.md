@@ -131,7 +131,7 @@ routebox service uninstall   # stop and remove from login
 
 4. Start `routebox` again, or run `routebox service restart` for the background service (it keeps running the old binary until restarted). Routes and upstreams are kept in the config file, and configs from older versions are migrated when loaded.
 
-`routebox --version` shows the version for `make build` binaries (from `git describe`); `go install` builds report `dev`.
+`routebox --version` shows the installed version: the module version for `go install` (e.g. `v0.1.1`), or `git describe` for `make build`. Right after a release the Go module proxy can keep answering `@latest` with the previous version for a few minutes; install the tag explicitly (`…/cmd/routebox@v0.1.1`) to get it immediately.
 
 ## 5. Build
 

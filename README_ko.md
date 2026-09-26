@@ -131,7 +131,7 @@ routebox service uninstall   # 멈추고 로그인 항목에서 제거
 
 4. `routebox` 를 다시 실행합니다. 백그라운드 서비스라면 `routebox service restart` 를 실행합니다(재시작 전까지는 예전 바이너리가 계속 돕니다). 라우트와 업스트림은 설정 파일에 그대로 남아 있고, 예전 버전의 설정은 읽을 때 새 형식으로 옮겨집니다.
 
-`routebox --version` 은 `make build` 로 만든 바이너리에서 버전(`git describe` 값)을 보여 줍니다. `go install` 로 설치하면 `dev` 로 표시됩니다.
+`routebox --version` 은 설치된 버전을 보여 줍니다. `go install` 이면 모듈 버전(예: `v0.1.1`), `make build` 면 `git describe` 값입니다. 새 버전을 낸 직후에는 Go 모듈 프록시가 몇 분 동안 `@latest` 에 예전 버전을 줄 수 있으니, 바로 받으려면 태그를 직접 지정하세요(`…/cmd/routebox@v0.1.1`).
 
 ## 5. 빌드
 
