@@ -137,7 +137,7 @@ func newRouteCmd(configPath *string) *cobra.Command {
 	var via string
 	add := &cobra.Command{
 		Use:   "add <domain>",
-		Short: "Route a domain (and its subdomains) through an upstream or direct",
+		Short: "Route a domain (and its subdomains; *.example.com for subdomains only) through an upstream or direct",
 		Args:  cobra.ExactArgs(1),
 		RunE: withSession(configPath, func(ctx context.Context, cmd *cobra.Command, s *session, args []string) error {
 			var r router.Route

@@ -116,11 +116,11 @@ var ko = map[string]string{
 	"Domain":         "도메인",
 	"Via":            "경로",
 	"first upstream": "첫 업스트림",
-	"Subdomains are included. Pasting a URL works too.": "서브도메인도 포함됩니다. URL을 그대로 붙여 넣어도 됩니다.",
-	"←/→ picks where this domain goes":                  "←/→ 로 이 도메인이 나갈 곳을 고릅니다",
-	"Route added: %s → %s":                              "라우트 추가됨: %s → %s",
-	"Route updated: %s → %s":                            "라우트 변경됨: %s → %s",
-	"Route removed: %s":                                 "라우트 삭제됨: %s",
+	"Includes subdomains; *.example.com = only them": "서브도메인 포함, *.example.com은 서브도메인만",
+	"←/→ picks where this domain goes":               "←/→ 로 이 도메인이 나갈 곳을 고릅니다",
+	"Route added: %s → %s":                           "라우트 추가됨: %s → %s",
+	"Route updated: %s → %s":                         "라우트 변경됨: %s → %s",
+	"Route removed: %s":                              "라우트 삭제됨: %s",
 
 	// preset
 	"Add Preset":                        "preset 추가",

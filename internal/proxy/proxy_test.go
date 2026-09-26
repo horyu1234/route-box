@@ -230,6 +230,29 @@ func TestConnectProxyPassesHostnameToSocksWithoutLocalDNS(t *testing.T) {
 	}
 }
 
+// "*." route 는 서브도메인만 업스트림으로 보내고, 도메인 자체는 다른 route 를 따른다.
+func TestWildcardRouteProxiesSubdomainsOnly(t *testing.T) {
+	target := echoServer(t, "tcp", "127.0.0.1:0")
+	h := newHarness(t, target, []router.Route{{Domain: "*.routebox-test.invalid", Mode: router.ModeProxy}})
+
+	c, br, resp := connect(t, h.addr, "www.routebox-test.invalid:443", "w")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	readAll(t, c, br)
+	if r := h.socks.Requests(); len(r) != 1 || r[0].Atyp != 0x03 || r[0].Host != "www.routebox-test.invalid" {
+		t.Fatalf("socks requests = %+v", r)
+	}
+	// 도메인 자체는 매칭되지 않아 기본 DIRECT 로 가고, 로컬에서 resolve 되지 않으니 실패한다.
+	_, _, resp = connect(t, h.addr, "routebox-test.invalid:443", "")
+	if resp.StatusCode != http.StatusBadGateway || len(h.socks.Requests()) != 1 {
+		t.Fatalf("apex: status %d, socks %+v", resp.StatusCode, h.socks.Requests())
+	}
+	if hits := h.stats.Hits(); len(hits) != 1 || hits["*.routebox-test.invalid"] != 1 || h.stats.Unmatched() != 1 {
+		t.Fatalf("hits = %v, unmatched %d", hits, h.stats.Unmatched())
+	}
+}
+
 // fallback 업스트림으로 가는 연결도 proxy route 와 똑같이 이름을 SOCKS 에 넘기고,
 // 업스트림이 죽으면 DIRECT 로 새지 않고 502 로 끝나야 한다.
 func TestFallbackUpstreamPassesHostnameAndFailsClosed(t *testing.T) {

@@ -402,7 +402,7 @@ func (m *Model) openRouteForm(old string, r router.Route) {
 	}
 	m.form = components.NewForm(m.lang, title,
 		components.TextField("domain", m.t("Domain"), r.Domain, "example.com",
-			m.t("Subdomains are included. Pasting a URL works too.")),
+			m.t("Includes subdomains; *.example.com = only them")),
 		components.ChoiceField("via", m.t("Via"), labels, sel, m.t("←/→ picks where this domain goes")),
 	)
 	m.editing = old

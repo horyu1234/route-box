@@ -16,7 +16,8 @@ func TestNormalizeRouteInput(t *testing.T) {
 		{"EXAMPLE.COM", "example.com"},
 		{"example.com.", "example.com"},
 		{"  example.com  ", "example.com"},
-		{"*.example.com", "example.com"},
+		{"*.example.com", "*.example.com"},
+		{"https://*.Example.COM.:443/x", "*.example.com"},
 		{".example.com", "example.com"},
 		{"https://user:pass@example.com/", "example.com"},
 		{"192.168.0.1", "192.168.0.1"},
@@ -44,6 +45,7 @@ func TestNormalizeRouteInputRejectsMalformed(t *testing.T) {
 		"", "   ", "https://", "exa mple.com", "-bad.com", "bad-.com", "a..b",
 		"example.com:0", "example.com:99999", "example.com:abc", "[::1", "[::1]x",
 		"ex!ample.com", "한국.kr", "1:2:3", "example.com:",
+		"*.", "*", "*example.com", "*.*.example.com", "api.*.example.com", "*.10.0.0.1", "*.[::1]",
 	} {
 		if got, err := NormalizeRouteInput(in); err == nil {
 			t.Errorf("NormalizeRouteInput(%q) = %q, want error", in, got)

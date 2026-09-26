@@ -71,7 +71,7 @@ RouteBox 127.0.0.1:8080 ── route lookup: example.com → via seoul
   └── no route / direct ──► OS resolver + direct TCP ────────────────────────────────────────► site
 ```
 
-- **Matching.** A route for `example.com` covers `example.com`, `www.example.com` and `a.b.example.com`, but not `notexample.com` or `example.com.attacker.net`. RouteBox walks the host's labels and **the most specific route wins**, so `example.com → seoul` plus `intranet.example.com → direct` sends only the intranet direct. IP routes match that exact address only.
+- **Matching.** A route for `example.com` covers `example.com`, `www.example.com` and `a.b.example.com`, but not `notexample.com` or `example.com.attacker.net`. RouteBox walks the host's labels and **the most specific route wins**, so `example.com → seoul` plus `intranet.example.com → direct` sends only the intranet direct. A **wildcard** route `*.example.com` covers only the subdomains (`www.example.com`, `a.b.example.com`), not `example.com` itself; next to an `example.com` route it is the more specific one, so `example.com → direct` plus `*.example.com → seoul` splits the domain from its subdomains. Wildcards go only at the front (`api.*.example.com` is rejected). IP routes match that exact address only.
 - **DNS stays remote.** Proxied connections never touch the local resolver. The hostname goes to the SOCKS server as a domain name (ATYP `0x03`), so it is resolved on the far side of the tunnel. Local DNS filtering or tampering does not affect routed domains. Tests pin this down (see [Architecture](#16-architecture)).
 - **Fail closed.** If a route's upstream is down or has been removed, the client gets `502 Bad Gateway`. Traffic never silently falls back to another upstream or to direct. The same holds for unmatched traffic when **everything else** goes through an upstream.
 
@@ -235,7 +235,7 @@ RouteBox does not touch ssh for external upstreams; it only checks every 5 secon
 
 In the TUI:
 
-- **`a`** — add a route. Type a domain, an IP address, or paste a whole URL: `https://WWW.Example.com:443/watch?v=1` is stored as `www.example.com` (scheme, path, query and port removed, lower-cased, trailing dot removed). Pick **Via** with ←/→.
+- **`a`** — add a route. Type a domain, an IP address, or paste a whole URL: `https://WWW.Example.com:443/watch?v=1` is stored as `www.example.com` (scheme, path, query and port removed, lower-cased, trailing dot removed). Start with `*.` to match only subdomains. Pick **Via** with ←/→.
 - **`v`** (or space) — send the selected route to the next upstream; after the last upstream comes `direct`. The change applies immediately.
 - **`e`** — edit domain and via. **`d`** — delete.
 - **everything else** — the row below the routes: where traffic that matches no route goes. `DIRECT` by default; `v` (or `enter`) sends it to the next upstream, then back to `direct`. An upstream used here cannot be deleted until you change it.
@@ -247,6 +247,7 @@ From the CLI:
 routebox route add example.com --via seoul
 routebox route add 203.0.113.10 --via lab
 routebox route add intranet.example.com --via direct   # exception inside example.com
+routebox route add '*.example.org' --via seoul         # subdomains only, not example.org
 routebox route via example.com tokyo                   # move a route
 routebox route default seoul                           # unmatched traffic via seoul (`direct` to undo)
 routebox route list                                    # HITS column while RouteBox is running

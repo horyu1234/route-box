@@ -52,6 +52,43 @@ func TestMatcherMostSpecificWins(t *testing.T) {
 	}
 }
 
+func TestWildcardMatchesSubdomainsOnly(t *testing.T) {
+	m := NewMatcher([]Route{{Domain: "*.example.com", Mode: ModeProxy, Upstream: "seoul"}})
+	for host, want := range map[string]bool{
+		"www.example.com":          true,
+		"a.b.example.com":          true,
+		"WWW.Example.COM.":         true,
+		"example.com":              false,
+		"notexample.com":           false,
+		"example.com.attacker.net": false,
+		"com":                      false,
+	} {
+		r, ok := m.Match(mustHost(t, host))
+		if ok != want || (ok && r.Domain != "*.example.com") {
+			t.Errorf("Match(%q) = %+v, %v; want %v", host, r, ok, want)
+		}
+	}
+}
+
+func TestWildcardAndApexSplitTraffic(t *testing.T) {
+	m := NewMatcher([]Route{
+		{Domain: "example.com", Mode: ModeDirect},
+		{Domain: "*.example.com", Mode: ModeProxy, Upstream: "seoul"},
+		{Domain: "intranet.example.com", Mode: ModeDirect},
+		{Domain: "*.intranet.example.com", Mode: ModeProxy, Upstream: "lab"},
+	})
+	for host, want := range map[string]string{
+		"example.com":            "example.com",
+		"www.example.com":        "*.example.com",
+		"intranet.example.com":   "intranet.example.com",
+		"a.intranet.example.com": "*.intranet.example.com",
+	} {
+		if r, ok := m.Match(mustHost(t, host)); !ok || r.Domain != want {
+			t.Errorf("Match(%q) = %+v, want %s", host, r, want)
+		}
+	}
+}
+
 func TestMatcherIPLiteralsAreExact(t *testing.T) {
 	m := NewMatcher([]Route{
 		{Domain: "10.0.0.1", Mode: ModeProxy},

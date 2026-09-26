@@ -216,6 +216,34 @@ func TestFallbackFollowsUpstreamAndBlocksRemoval(t *testing.T) {
 	}
 }
 
+func TestWildcardAndApexAreSeparateRoutes(t *testing.T) {
+	a := newApp(t, func(c *config.Config) {
+		c.Upstreams = []config.Upstream{external("seoul", "127.0.0.1:1080")}
+	})
+	if r, err := a.AddRoute("*.Example.com", "seoul"); err != nil || r.Domain != "*.example.com" {
+		t.Fatalf("add wildcard: %+v %v", r, err)
+	}
+	if _, err := a.AddRoute("*.example.com", "direct"); !errors.Is(err, ErrRouteExists) {
+		t.Fatalf("duplicate wildcard: %v", err)
+	}
+	if _, err := a.AddRoute("example.com", "direct"); err != nil {
+		t.Fatalf("apex next to its wildcard: %v", err)
+	}
+	disk, err := config.Load(a.ConfigPath())
+	if err != nil || len(disk.Routes) != 2 || disk.Routes[0].Domain != "*.example.com" {
+		t.Fatalf("disk routes = %+v, %v", disk.Routes, err)
+	}
+	for host, want := range map[string]router.Mode{"www.example.com": router.ModeProxy, "example.com": router.ModeDirect} {
+		h, _ := router.ParseHost(host)
+		if d := a.router.Decide(h); d.Mode != want {
+			t.Errorf("%s → %+v, want %s", host, d, want)
+		}
+	}
+	if r, err := a.RemoveRoute("*.example.com"); err != nil || r.Domain != "*.example.com" || len(a.Routes()) != 1 {
+		t.Fatalf("remove wildcard: %+v %v, left %+v", r, err, a.Routes())
+	}
+}
+
 func TestConnectionLogOffAndClear(t *testing.T) {
 	a := newApp(t, nil)
 	sub, unsub := a.Subscribe(16)

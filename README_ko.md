@@ -71,7 +71,7 @@ RouteBox 127.0.0.1:8080 ── 라우트 조회: example.com → via seoul
   └── 라우트 없음 / direct ──► OS resolver + 직접 TCP ─────────────────────────────────────► 사이트
 ```
 
-- **매칭.** `example.com` 라우트는 `example.com`, `www.example.com`, `a.b.example.com`을 포함하고, `notexample.com`이나 `example.com.attacker.net`은 포함하지 않습니다. 호스트 레이블을 하나씩 떼어 가며 찾으므로 **가장 구체적인 라우트가 이깁니다**. `example.com → seoul`과 `intranet.example.com → direct`를 함께 두면 인트라넷만 직접 연결됩니다. IP 라우트는 그 주소와 정확히 같을 때만 적용됩니다.
+- **매칭.** `example.com` 라우트는 `example.com`, `www.example.com`, `a.b.example.com`을 포함하고, `notexample.com`이나 `example.com.attacker.net`은 포함하지 않습니다. 호스트 레이블을 하나씩 떼어 가며 찾으므로 **가장 구체적인 라우트가 이깁니다**. `example.com → seoul`과 `intranet.example.com → direct`를 함께 두면 인트라넷만 직접 연결됩니다. **와일드카드** 라우트 `*.example.com`은 서브도메인(`www.example.com`, `a.b.example.com`)만 포함하고 `example.com` 자체는 포함하지 않습니다. `example.com` 라우트와 함께 두면 와일드카드가 더 구체적이므로, `example.com → direct`와 `*.example.com → seoul`로 도메인 자체와 서브도메인을 나눠 보낼 수 있습니다. 와일드카드는 맨 앞에만 쓸 수 있습니다(`api.*.example.com`은 거부). IP 라우트는 그 주소와 정확히 같을 때만 적용됩니다.
 - **DNS는 원격에서.** 업스트림으로 가는 연결은 로컬 resolver를 한 번도 쓰지 않습니다. hostname을 SOCKS 서버에 도메인 타입(ATYP `0x03`)으로 넘기므로 이름 해석은 터널 반대편에서 일어납니다. 로컬 DNS가 막거나 조작해도 라우팅한 도메인은 영향을 받지 않습니다. 테스트로 고정되어 있습니다([아키텍처](#16-아키텍처) 참고).
 - **실패 시 차단(fail closed).** 라우트의 업스트림이 죽었거나 삭제됐으면 `502 Bad Gateway`를 돌려줍니다. 다른 업스트림이나 직접 연결로 몰래 새지 않습니다. **그 외 전부**를 업스트림으로 보낼 때 매칭되지 않은 트래픽도 마찬가지입니다.
 
@@ -235,7 +235,7 @@ external 업스트림에서는 RouteBox가 ssh를 건드리지 않고, 5초마�
 
 TUI에서:
 
-- **`a`** — 라우트 추가. 도메인이나 IP 주소를 입력하거나 URL을 통째로 붙여 넣습니다. `https://WWW.Example.com:443/watch?v=1`은 `www.example.com`으로 저장됩니다(scheme·path·query·port 제거, 소문자, 끝의 `.` 제거). **경로(Via)**는 ←/→ 로 고릅니다.
+- **`a`** — 라우트 추가. 도메인이나 IP 주소를 입력하거나 URL을 통째로 붙여 넣습니다. `https://WWW.Example.com:443/watch?v=1`은 `www.example.com`으로 저장됩니다(scheme·path·query·port 제거, 소문자, 끝의 `.` 제거). `*.`로 시작하면 서브도메인만 매칭합니다. **경로(Via)**는 ←/→ 로 고릅니다.
 - **`v`**(또는 스페이스) — 선택한 라우트를 다음 업스트림으로 보냅니다. 마지막 업스트림 다음은 `direct`입니다. 바로 적용됩니다.
 - **`e`** — 도메인과 경로 편집. **`d`** — 삭제.
 - **그 외 전부** — 라우트 목록 아래 행으로, 어떤 라우트에도 매칭되지 않은 트래픽이 나가는 곳입니다. 기본값은 `DIRECT`이고, `v`(또는 `enter`)로 다음 업스트림으로 보내며 마지막 다음은 다시 `direct`입니다. 여기서 쓰는 업스트림은 이걸 바꾸기 전까지 삭제할 수 없습니다.
@@ -247,6 +247,7 @@ CLI로:
 routebox route add example.com --via seoul
 routebox route add 203.0.113.10 --via lab
 routebox route add intranet.example.com --via direct   # example.com 안의 예외
+routebox route add '*.example.org' --via seoul         # 서브도메인만, example.org 자체는 제외
 routebox route via example.com tokyo                   # 라우트 옮기기
 routebox route default seoul                           # 매칭되지 않은 트래픽을 seoul로 (`direct`로 되돌리기)
 routebox route list                                    # RouteBox가 실행 중이면 HITS 열 표시

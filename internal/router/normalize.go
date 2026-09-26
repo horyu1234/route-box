@@ -162,8 +162,9 @@ func validatePort(p string) error {
 }
 
 // NormalizeRouteInput 은 "https://WWW.Example.com:443/watch?v=1" 같은 사용자
-// 입력을 route key("www.example.com")로 바꾼다. route 는 항상 서브도메인을
-// 포함하므로 앞의 "*." 나 "." 는 제거한다.
+// 입력을 route key("www.example.com")로 바꾼다. 도메인 route 는 서브도메인을
+// 포함하므로 앞의 "." 는 제거한다. 앞의 "*." 는 남겨 서브도메인만 매칭되는
+// 와일드카드 route("*.example.com")가 된다.
 func NormalizeRouteInput(input string) (string, error) {
 	s := strings.TrimSpace(input)
 	if i := strings.Index(s, "://"); i >= 0 {
@@ -175,14 +176,24 @@ func NormalizeRouteInput(input string) (string, error) {
 	if i := strings.LastIndexByte(s, '@'); i >= 0 {
 		s = s[i+1:]
 	}
-	s = strings.TrimPrefix(s, "*.")
-	s = strings.TrimPrefix(s, ".")
+	wild := strings.HasPrefix(s, WildcardPrefix)
+	if wild {
+		s = s[len(WildcardPrefix):]
+	} else {
+		s = strings.TrimPrefix(s, ".")
+	}
 	if s == "" {
 		return "", fmt.Errorf("%w: empty domain", ErrInvalidHost)
 	}
 	h, _, err := SplitHostPort(s)
 	if err != nil {
 		return "", err
+	}
+	if wild {
+		if h.Kind != KindDomain {
+			return "", fmt.Errorf("%w: %q: a wildcard needs a domain, not an IP address", ErrInvalidHost, input)
+		}
+		return WildcardPrefix + h.Name, nil
 	}
 	return h.Name, nil
 }

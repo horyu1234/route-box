@@ -12,6 +12,10 @@ var (
 	ErrInvalidUpstreamName = errors.New("invalid upstream name")
 )
 
+// WildcardPrefix 로 시작하는 route("*.example.com")는 서브도메인에만 매칭되고
+// example.com 자체에는 매칭되지 않는다.
+const WildcardPrefix = "*."
+
 // ViaDirect 는 "업스트림 없이 직접 연결"을 뜻하는 예약어라 업스트림 이름으로 쓸 수 없다.
 const ViaDirect = "direct"
 
@@ -42,8 +46,8 @@ func (m Mode) Label() string {
 	return "DIRECT"
 }
 
-// Route 는 Domain 과 그 모든 서브도메인에 매칭된다. IP 리터럴이면 그
-// 정확한 주소에만 매칭된다. proxy route 는 Upstream 이름의 SOCKS 로 나간다.
+// Route 는 Domain 과 그 모든 서브도메인에 매칭된다. Domain 이 "*." 로
+// 시작하면 서브도메인에만 매칭된다. IP 리터럴이면 그 정확한 주소에만 매칭된다. proxy route 는 Upstream 이름의 SOCKS 로 나간다.
 type Route struct {
 	Domain   string `json:"domain"`
 	Mode     Mode   `json:"mode"`
