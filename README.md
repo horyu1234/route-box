@@ -84,11 +84,13 @@ RouteBox 127.0.0.1:8080 ── route lookup: example.com → via seoul
 
 ## 4. Install
 
-With Go (see `go.mod` for the required version):
+With Go (see `go.mod` for the required version), install the latest release tag:
 
 ```sh
-go install github.com/horyu1234/route-box/cmd/routebox@latest
+go install github.com/horyu1234/route-box/cmd/routebox@v0.1.3
 ```
+
+Always name the tag: `@latest` goes through the Go module proxy, which can keep serving the previous version for a while after a release. Newer releases are listed on the [tags page](https://github.com/horyu1234/route-box/tags); `routebox --version` prints the one you have.
 
 Or build from source ([Build](#5-build)). The result is a single static binary (`CGO_ENABLED=0`); copy it anywhere on your `PATH`.
 
@@ -121,17 +123,17 @@ routebox service uninstall   # stop and remove from login
 
 1. Quit the running instance: `q` in the TUI, or `Ctrl+C` for `--no-tui`. `routebox status` should print `RouteBox   not running`. With the [background service](#run-in-the-background) you can skip this step.
 2. Optionally back up `config.json` ([Configuration](#13-configuration)).
-3. Replace the binary the same way you installed it:
+3. Replace the binary the same way you installed it, naming the new tag from the [tags page](https://github.com/horyu1234/route-box/tags):
 
    ```sh
-   go install github.com/horyu1234/route-box/cmd/routebox@latest
+   go install github.com/horyu1234/route-box/cmd/routebox@v0.1.3
    # or, from a source checkout:
    git pull && make build   # then copy bin/routebox over the old binary
    ```
 
 4. Start `routebox` again, or run `routebox service restart` for the background service (it keeps running the old binary until restarted). Routes and upstreams are kept in the config file, and configs from older versions are migrated when loaded.
 
-`routebox --version` shows the installed version: the module version for `go install` (e.g. `v0.1.1`), or `git describe` for `make build`. Right after a release the Go module proxy can keep answering `@latest` with the previous version for a few minutes; install the tag explicitly (`…/cmd/routebox@v0.1.1`) to get it immediately.
+`routebox --version` shows the installed version: the module version for `go install` (e.g. `v0.1.3`), or `git describe` for `make build`.
 
 ## 5. Build
 
