@@ -230,6 +230,41 @@ func TestConnectProxyPassesHostnameToSocksWithoutLocalDNS(t *testing.T) {
 	}
 }
 
+// fallback 업스트림으로 가는 연결도 proxy route 와 똑같이 이름을 SOCKS 에 넘기고,
+// 업스트림이 죽으면 DIRECT 로 새지 않고 502 로 끝나야 한다.
+func TestFallbackUpstreamPassesHostnameAndFailsClosed(t *testing.T) {
+	target := echoServer(t, "tcp", "127.0.0.1:0")
+	h := newHarness(t, target, []router.Route{{Domain: "example.com", Mode: router.ModeDirect}})
+	h.router.SetFallback("up")
+
+	c, br, resp := connect(t, h.addr, "unmatched.routebox-test.invalid:443", "hi")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if got := readAll(t, c, br); got != "hi|eof after 2" {
+		t.Fatalf("tunnel data = %q", got)
+	}
+	if r := h.socks.Requests(); len(r) != 1 || r[0].Atyp != 0x03 || r[0].Host != "unmatched.routebox-test.invalid" {
+		t.Fatalf("socks requests = %+v", r)
+	}
+	e := h.waitEvent(t, func(e events.ConnectionEvent) bool { return e.Host == "unmatched.routebox-test.invalid" })
+	if e.Route != router.ModeProxy || e.Upstream != "up" || e.Matched != "" {
+		t.Fatalf("event = %+v", e)
+	}
+	if h.stats.Unmatched() != 1 {
+		t.Fatalf("unmatched = %d", h.stats.Unmatched())
+	}
+
+	_ = h.socks.Close()
+	_, _, resp = connect(t, h.addr, "other.routebox-test.invalid:443", "")
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status with fallback upstream down = %d, want 502", resp.StatusCode)
+	}
+	if n := h.resolves.Load(); n != 0 {
+		t.Fatalf("local resolver was called %d times for fallback traffic", n)
+	}
+}
+
 // Positive control: 카운팅 리졸버가 실제로 DIRECT 경로에 걸려 있다는 것을
 // 증명한다, 그래야 위의 0 이라는 카운트가 "hook 이 안 걸렸다"가 아니라
 // "resolve 되지 않았다"를 의미한다.

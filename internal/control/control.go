@@ -119,6 +119,10 @@ type languageRequest struct {
 	Language string `json:"language"`
 }
 
+type fallbackRequest struct {
+	Via string `json:"via"`
+}
+
 type routeRequest struct {
 	Domain string `json:"domain"`
 	Via    string `json:"via"`
@@ -261,6 +265,14 @@ func Serve(ctx context.Context, ln net.Listener, app *core.App) error {
 		}
 		updated, err := app.UpdateUpstream(r.URL.Query().Get("name"), u)
 		return http.StatusOK, updated, err
+	})
+	handle("PUT /v1/fallback", func(r *http.Request) (int, any, error) {
+		var req fallbackRequest
+		if err := decode(r, &req); err != nil {
+			return 0, nil, err
+		}
+		via, err := app.SetFallback(req.Via)
+		return http.StatusOK, fallbackRequest{Via: via}, err
 	})
 	handle("PUT /v1/language", func(r *http.Request) (int, any, error) {
 		var req languageRequest
@@ -509,6 +521,12 @@ func (c *Client) UpdateRoute(ctx context.Context, oldDomain, domain, via string)
 func (c *Client) UpdateUpstream(ctx context.Context, oldName string, u config.Upstream) (config.Upstream, error) {
 	var out config.Upstream
 	return out, c.do(ctx, http.MethodPut, "/v1/upstreams?name="+url.QueryEscape(oldName), u, &out)
+}
+
+// SetFallback 은 매칭되지 않은 연결이 나갈 곳을 바꾸고 정규화된 값을 돌려준다.
+func (c *Client) SetFallback(ctx context.Context, via string) (string, error) {
+	var out fallbackRequest
+	return out.Via, c.do(ctx, http.MethodPut, "/v1/fallback", fallbackRequest{Via: via}, &out)
 }
 
 func (c *Client) SetLanguage(ctx context.Context, lang string) error {

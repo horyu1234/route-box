@@ -273,20 +273,25 @@ func (m Model) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "a":
 		m.openRouteForm("", router.Route{})
-	case "enter":
-		if m.routeList.OnAddRow(len(m.routes)) {
+	case "enter", "e":
+		switch r, ok := m.selectedRoute(); {
+		case ok:
+			m.openRouteForm(r.Domain, r)
+		case m.routeList.OnFallbackRow(len(m.routes)):
+			m.cycleFallback()
+		case msg.String() == "enter":
 			m.openRouteForm("", router.Route{})
-		} else if r, ok := m.selectedRoute(); ok {
-			m.openRouteForm(r.Domain, r)
-		}
-	case "e":
-		if r, ok := m.selectedRoute(); ok {
-			m.openRouteForm(r.Domain, r)
 		}
 	case "v", " ":
-		m.cycleVia()
+		if m.routeList.OnFallbackRow(len(m.routes)) {
+			m.cycleFallback()
+		} else {
+			m.cycleVia()
+		}
 	case "d", "delete", "backspace":
-		if r, ok := m.selectedRoute(); ok {
+		if m.routeList.OnFallbackRow(len(m.routes)) {
+			m.toast(components.ToastInfo, "Unmatched traffic always goes somewhere; press v to change where")
+		} else if r, ok := m.selectedRoute(); ok {
 			m.deleting = r.Domain
 			m.modal = modalDeleteRoute
 		}
@@ -323,6 +328,28 @@ func (m *Model) cycleVia() {
 	}
 	m.toast(components.ToastSuccess, "%s → %s", nr.Domain, m.viaText(nr))
 	m.routes = m.app.Routes()
+}
+
+// cycleFallback 은 매칭되지 않은 트래픽을 다음 업스트림(마지막은 direct)으로 즉시 보낸다.
+func (m *Model) cycleFallback() {
+	values := append(m.upstreamNames(), router.ViaDirect)
+	cur := m.status.Fallback
+	next := values[0]
+	for i, v := range values {
+		if v == cur {
+			next = values[(i+1)%len(values)]
+		}
+	}
+	via, err := m.app.SetFallback(next)
+	if err != nil {
+		m.toast(components.ToastError, "%v", err)
+		return
+	}
+	m.status = m.app.Status()
+	if via == router.ViaDirect {
+		via = "DIRECT"
+	}
+	m.toast(components.ToastSuccess, "Everything else → %s", via)
 }
 
 func (m *Model) restartUpstream(name string) {

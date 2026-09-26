@@ -60,6 +60,9 @@ type Config struct {
 	Language  string         `json:"language,omitempty"`
 	Upstreams []Upstream     `json:"upstreams"`
 	Routes    []router.Route `json:"routes"`
+	// Fallback 은 어떤 route 에도 매칭되지 않은 연결이 나갈 업스트림 이름이다.
+	// 비어 있으면 DIRECT 다.
+	Fallback string `json:"fallback,omitempty"`
 
 	LegacySocks string     `json:"socks,omitempty"`
 	LegacySSH   *legacySSH `json:"ssh,omitempty"`
@@ -172,6 +175,7 @@ func (c *Config) Normalize() error {
 			u.Socks = DefaultSocks
 		}
 	}
+	c.Fallback = NormalizeFallback(c.Fallback)
 	def := c.DefaultUpstream()
 	seen := make(map[string]bool, len(c.Routes))
 	routes := make([]router.Route, 0, len(c.Routes))
@@ -231,7 +235,28 @@ func (c Config) Validate() error {
 			errs = append(errs, fmt.Errorf("route %q: %w %q", r.Domain, ErrUnknownUpstream, r.Upstream))
 		}
 	}
+	if c.Fallback != "" && !names[c.Fallback] {
+		errs = append(errs, fmt.Errorf("fallback: %w %q", ErrUnknownUpstream, c.Fallback))
+	}
 	return errors.Join(errs...)
+}
+
+// NormalizeFallback 은 fallback 입력을 정규화한다. "direct" 와 "" 는 모두 DIRECT 인 "" 가 된다.
+// route 의 via 와 달리 "" 가 첫 업스트림을 뜻하지 않는다.
+func NormalizeFallback(via string) string {
+	v := strings.ToLower(strings.TrimSpace(via))
+	if v == router.ViaDirect {
+		return ""
+	}
+	return v
+}
+
+// FallbackVia 는 fallback 을 route 의 via 처럼 한 단어로 돌려준다: 업스트림 이름 또는 "direct".
+func (c Config) FallbackVia() string {
+	if c.Fallback == "" {
+		return router.ViaDirect
+	}
+	return c.Fallback
 }
 
 var (

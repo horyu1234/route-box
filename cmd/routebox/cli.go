@@ -123,6 +123,13 @@ func viaLabel(r router.Route) string {
 	}
 }
 
+func fallbackLabel(via string) string {
+	if via == router.ViaDirect || via == "" {
+		return "DIRECT"
+	}
+	return via
+}
+
 func newRouteCmd(configPath *string) *cobra.Command {
 	route := &cobra.Command{Use: "route", Short: "Choose which domains go through which upstream"}
 
@@ -192,6 +199,43 @@ func newRouteCmd(configPath *string) *cobra.Command {
 		}),
 	}
 
+	fallback := &cobra.Command{
+		Use:   "default [upstream|direct]",
+		Short: "Show or change where traffic that matches no route goes (default: direct)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+			defer cancel()
+			s, err := openSession(ctx, *configPath)
+			if err != nil {
+				return err
+			}
+			var via string
+			switch {
+			case len(args) == 0 && s.running():
+				var st core.Status
+				st, err = s.client.Status(ctx)
+				via = st.Fallback
+			case len(args) == 0:
+				via = s.app.Config().FallbackVia()
+			case s.running():
+				via, err = s.client.SetFallback(ctx, args[0])
+			default:
+				via, err = s.app.SetFallback(args[0])
+			}
+			if err != nil {
+				return err
+			}
+			if len(args) == 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "Everything else → %s\n", fallbackLabel(via))
+				return nil
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Everything else → %s\n", fallbackLabel(via))
+			s.note(cmd)
+			return nil
+		},
+	}
+
 	var asJSON bool
 	list := &cobra.Command{
 		Use:     "list",
@@ -206,19 +250,20 @@ func newRouteCmd(configPath *string) *cobra.Command {
 				return err
 			}
 			routes := []router.Route{}
+			var fbVia string
 			// hits 는 실행 중인 인스턴스가 이번 실행 동안 센 값이라, 꺼져 있으면 nil 이다.
 			var hits map[string]int64
 			if s.running() {
 				var st core.Status
 				if routes, err = s.client.Routes(ctx); err == nil {
 					st, err = s.client.Status(ctx)
-					hits = st.RouteHits
+					hits, fbVia = st.RouteHits, st.Fallback
 					if hits == nil {
 						hits = map[string]int64{}
 					}
 				}
 			} else {
-				routes = s.app.Routes()
+				routes, fbVia = s.app.Routes(), s.app.Config().FallbackVia()
 			}
 			if err != nil {
 				return err
@@ -239,6 +284,7 @@ func newRouteCmd(configPath *string) *cobra.Command {
 			}
 			if len(routes) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No routes. Add one with: routebox route add example.com --via <upstream>")
+				fmt.Fprintf(cmd.OutOrStdout(), "Everything else → %s\n", fallbackLabel(fbVia))
 				return nil
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
@@ -253,12 +299,16 @@ func newRouteCmd(configPath *string) *cobra.Command {
 					fmt.Fprintf(tw, "%s\t%s\t%d\n", r.Domain, viaLabel(r), hits[r.Domain])
 				}
 			}
-			return tw.Flush()
+			if err := tw.Flush(); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "\nEverything else → %s  (change with: routebox route default <upstream|direct>)\n", fallbackLabel(fbVia))
+			return nil
 		},
 	}
 	list.Flags().BoolVar(&asJSON, "json", false, "print JSON")
 
-	route.AddCommand(add, set, remove, list)
+	route.AddCommand(add, set, remove, fallback, list)
 	return route
 }
 
@@ -664,6 +714,7 @@ func newStatusCmd(configPath *string) *cobra.Command {
 				st.Stats.Active, st.Stats.Total, st.Stats.Proxied, st.Stats.Direct, st.Stats.Failed,
 				components.HumanBytes(st.Stats.RX), components.HumanBytes(st.Stats.TX))
 			fmt.Fprintf(out, "Routes     %d (%d direct)\n", st.Routes, st.Direct)
+			fmt.Fprintf(out, "Unmatched  → %s (%d hits)\n", fallbackLabel(st.Fallback), st.FallbackHits)
 			fmt.Fprintf(out, "Config     %s\n", ld.path)
 			if len(st.Upstreams) > 0 {
 				fmt.Fprintln(out)

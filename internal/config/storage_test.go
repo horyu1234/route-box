@@ -106,6 +106,7 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		`{"upstreams":[{"name":"a","host":"h"},{"name":"b","host":"h2"}]}`,
 		`{"upstreams":[{"name":"a","host":"h"}],"routes":[{"domain":"example.com","upstream":"missing"}]}`,
 		`{"language":"fr"}`,
+		`{"upstreams":[{"name":"a","host":"h"}],"fallback":"missing"}`,
 	} {
 		path := filepath.Join(t.TempDir(), "config.json")
 		if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
@@ -113,6 +114,23 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		}
 		if _, err := Load(path); err == nil {
 			t.Errorf("Load(%s) succeeded, want error", raw)
+		}
+	}
+}
+
+func TestFallbackNormalisesAndDefaultsToDirect(t *testing.T) {
+	for raw, want := range map[string]string{
+		`{"upstreams":[{"name":"a","host":"h"}]}`:                     "",
+		`{"upstreams":[{"name":"a","host":"h"}],"fallback":"DIRECT"}`: "",
+		`{"upstreams":[{"name":"a","host":"h"}],"fallback":" A "}`:    "a",
+	} {
+		path := filepath.Join(t.TempDir(), "config.json")
+		if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if err != nil || cfg.Fallback != want {
+			t.Errorf("Load(%s): fallback %q, %v; want %q", raw, cfg.Fallback, err, want)
 		}
 	}
 }

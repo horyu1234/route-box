@@ -25,8 +25,11 @@ var ko = map[string]string{
 	"Press a to route a domain,": "a를 눌러 도메인을 라우팅하거나",
 	"or p to add a preset.":      "p로 preset을 추가하세요.",
 	"+ Add Route":                "+ 라우트 추가",
-	"no upstream":                "업스트림 없음",
-	"Waiting for connections…":   "연결을 기다리는 중…",
+	"everything else":            "그 외 전부",
+	"Everything else → %s":       "그 외 전부 → %s",
+	"Unmatched traffic always goes somewhere; press v to change where": "매칭되지 않은 트래픽도 어딘가로는 나갑니다. v로 나갈 곳을 바꾸세요",
+	"no upstream":                                  "업스트림 없음",
+	"Waiting for connections…":                     "연결을 기다리는 중…",
 	"Point your browser's HTTP proxy at RouteBox;": "브라우저의 HTTP 프록시를 RouteBox로 지정하면",
 	"traffic shows up here as it happens.":         "트래픽이 여기에 실시간으로 표시됩니다.",
 

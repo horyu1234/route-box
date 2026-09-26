@@ -31,6 +31,7 @@ type Backend interface {
 	UpdateRoute(oldDomain, input, via string) (router.Route, error)
 	SetRouteVia(domain, via string) (router.Route, error)
 	RemoveRoute(domain string) (router.Route, error)
+	SetFallback(via string) (string, error)
 	AddPreset(name, via string) ([]router.Route, error)
 	AddUpstream(u config.Upstream) (config.Upstream, error)
 	UpdateUpstream(oldName string, u config.Upstream) (config.Upstream, error)

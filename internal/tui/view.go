@@ -151,7 +151,8 @@ func (m Model) bodyView(lay layout) string {
 	if lay.routesShown {
 		focused := m.focus == focusRoutes || !lay.logsShown
 		title := components.PanelTitle(m.t("Routes"), focused, fmt.Sprintf("%d", len(m.routes)))
-		lines := m.routeList.View(m.routes, components.HealthMap(m.status), m.status.RouteHits, lay.routesW-4, lay.bodyH-3, focused, m.lang)
+		fb := components.Fallback{Via: m.status.Fallback, Hits: m.status.FallbackHits}
+		lines := m.routeList.View(m.routes, fb, components.HealthMap(m.status), m.status.RouteHits, lay.routesW-4, lay.bodyH-3, focused, m.lang)
 		cols = append(cols, components.Panel(title, lines, lay.routesW, lay.bodyH, focused))
 	}
 	if lay.logsShown {

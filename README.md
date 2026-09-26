@@ -51,7 +51,7 @@ Point your browser at `127.0.0.1:8080` once. From then on, you decide in a termi
 - Runs a local **HTTP CONNECT proxy** (default `127.0.0.1:8080`).
 - Lets you register any number of **upstreams**: managed SSH tunnels (`ssh -N -D`, started and supervised by RouteBox) or existing SOCKS5 servers.
 - Lets you register **routes**: a domain (with all of its subdomains) or an exact IPv4/IPv6 address, each sent **via** a specific upstream or `direct`.
-- Sends everything that matches no route **direct**.
+- Sends everything that matches no route **direct** by default, or through an upstream you choose.
 - Applies changes **immediately** — existing connections keep going, new connections follow the new rules.
 - Never decrypts TLS: no certificates, no MITM, no SNI changes. CONNECT tunnels carry opaque bytes.
 
@@ -73,7 +73,7 @@ RouteBox 127.0.0.1:8080 ── route lookup: example.com → via seoul
 
 - **Matching.** A route for `example.com` covers `example.com`, `www.example.com` and `a.b.example.com`, but not `notexample.com` or `example.com.attacker.net`. RouteBox walks the host's labels and **the most specific route wins**, so `example.com → seoul` plus `intranet.example.com → direct` sends only the intranet direct. IP routes match that exact address only.
 - **DNS stays remote.** Proxied connections never touch the local resolver. The hostname goes to the SOCKS server as a domain name (ATYP `0x03`), so it is resolved on the far side of the tunnel. Local DNS filtering or tampering does not affect routed domains. Tests pin this down (see [Architecture](#16-architecture)).
-- **Fail closed.** If a route's upstream is down or has been removed, the client gets `502 Bad Gateway`. Traffic never silently falls back to another upstream or to direct.
+- **Fail closed.** If a route's upstream is down or has been removed, the client gets `502 Bad Gateway`. Traffic never silently falls back to another upstream or to direct. The same holds for unmatched traffic when **everything else** goes through an upstream.
 
 ## 3. Why
 
@@ -238,6 +238,7 @@ In the TUI:
 - **`a`** — add a route. Type a domain, an IP address, or paste a whole URL: `https://WWW.Example.com:443/watch?v=1` is stored as `www.example.com` (scheme, path, query and port removed, lower-cased, trailing dot removed). Pick **Via** with ←/→.
 - **`v`** (or space) — send the selected route to the next upstream; after the last upstream comes `direct`. The change applies immediately.
 - **`e`** — edit domain and via. **`d`** — delete.
+- **everything else** — the row below the routes: where traffic that matches no route goes. `DIRECT` by default; `v` (or `enter`) sends it to the next upstream, then back to `direct`. An upstream used here cannot be deleted until you change it.
 - Each route shows where it goes (`→ seoul`, `DIRECT`), coloured by that upstream's health, followed by its hit count: how many connections and requests it matched since RouteBox started (`12k` = 12,000+). A subdomain request counts toward the route that matched it; counts reset on restart, when the route is removed or its domain is edited, but survive `v`.
 
 From the CLI:
@@ -247,6 +248,7 @@ routebox route add example.com --via seoul
 routebox route add 203.0.113.10 --via lab
 routebox route add intranet.example.com --via direct   # exception inside example.com
 routebox route via example.com tokyo                   # move a route
+routebox route default seoul                           # unmatched traffic via seoul (`direct` to undo)
 routebox route list                                    # HITS column while RouteBox is running
 ```
 
@@ -279,7 +281,7 @@ routebox --preset <name>        # add before starting
 | `↑`/`k`, `↓`/`j` | Move selection (scroll the log when it has focus) |
 | `tab` | Switch focus between Routes and Live Connections |
 | `a` | Add a route |
-| `v` / space | Send the selected route to the next upstream |
+| `v` / space | Send the selected route to the next upstream (on **everything else**: where unmatched traffic goes) |
 | `e` / `enter` | Edit the selected route (`enter` on "+ Add Route" adds) |
 | `d` | Delete the selected route (confirm with `y`) |
 | `p` | Add a preset |
@@ -313,6 +315,7 @@ routebox upstream remove lab
 
 routebox route add example.com --via seoul
 routebox route via example.com tokyo
+routebox route default [upstream|direct]   # where unmatched traffic goes
 routebox route remove example.com
 routebox route list                        # --json
 
@@ -356,10 +359,12 @@ Override with `--config <path>` or `ROUTEBOX_CONFIG`.
     { "domain": "example.org", "mode": "proxy", "upstream": "tokyo" },
     { "domain": "203.0.113.10", "mode": "proxy", "upstream": "lab" },
     { "domain": "intranet.example.com", "mode": "direct" }
-  ]
+  ],
+  "fallback": "seoul"
 }
 ```
 
+- `fallback` is the upstream for traffic that matches no route. Omit it (or use `"direct"`) to send that traffic direct.
 - Omitted `user`/`port`/`identity_file` defer to `~/.ssh/config`. Setting `"port": 22` passes `-p 22` and overrides it.
 - Every change is saved immediately with an **atomic write**: temp file in the same directory, fsync, rename. The file is `0600`, the directory `0700`.
 - If the file cannot be loaded, RouteBox **never deletes or overwrites it**. The TUI shows the error and offers to continue with safe defaults, backing the file up to `config.json.bak-YYYYMMDD-HHMMSS` first. `--no-tui` and the CLI print the error and exit.
@@ -382,7 +387,7 @@ Override with `--config <path>` or `ROUTEBOX_CONFIG`.
 | `SOCKS address already used by another upstream` | Each upstream needs its own SOCKS address. |
 | `listen 127.0.0.1:8080: address already in use` | Another app owns 8080. Use `--listen 127.0.0.1:8081` or change `listen`, and update Firefox. |
 | `another RouteBox instance is already running` | Check with `routebox status`, or stop the other instance. |
-| `upstream is still used by routes` | Move the routes to another upstream (`v`, or `routebox route via`) before deleting it. |
+| `upstream is still in use` | Move the routes to another upstream (`v`, or `routebox route via`) before deleting it. If it is where unmatched traffic goes, change that first (`v` on **everything else**, or `routebox route default`). |
 | A routed site returns `502` | That route's upstream is down. The badge shows `DEGRADED`/`RECONNECTING` and the footer shows which upstream. RouteBox does not fall back on purpose. |
 | A site seems to ignore a new route | The browser is reusing an existing connection. Rules apply to **new** connections; reload the tab or wait. Also check step 4 of the Firefox setup. |
 | Some parts of a service still go direct | The service uses more domains than the route covers. Watch Live Connections for `DIRECT` entries and add them. |

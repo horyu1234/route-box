@@ -197,6 +197,33 @@ func TestVCyclesThroughUpstreamsThenDirect(t *testing.T) {
 	}
 }
 
+func TestEverythingElseRowCyclesFallback(t *testing.T) {
+	m := newModel(t, func(c *config.Config) {
+		twoUpstreams(c)
+		c.Routes = []router.Route{{Domain: "example.com", Mode: router.ModeProxy, Upstream: "seoul"}}
+	})
+	m = press(t, m, "down")
+	if !strings.Contains(plain(m.View()), "everything else") {
+		t.Fatalf("no fallback row:\n%s", plain(m.View()))
+	}
+	var got []string
+	for range 3 {
+		m = press(t, m, "v")
+		got = append(got, m.app.Status().Fallback)
+	}
+	if strings.Join(got, ",") != "seoul,lab,direct" {
+		t.Fatalf("fallback sequence = %v", got)
+	}
+	m = press(t, m, "d")
+	if m.modal == modalDeleteRoute || len(m.app.Routes()) != 1 {
+		t.Fatal("d on the fallback row must not delete anything")
+	}
+	m = press(t, m, "down", "enter")
+	if m.modal != modalAddRoute {
+		t.Fatalf("enter on the add row opened modal %v", m.modal)
+	}
+}
+
 func TestDeleteRouteWithConfirmation(t *testing.T) {
 	m := newModel(t, func(c *config.Config) {
 		twoUpstreams(c)

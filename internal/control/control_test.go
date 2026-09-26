@@ -105,8 +105,14 @@ func TestControlRoundTrip(t *testing.T) {
 	if _, err := c.RemoveRoute(ctx, "mail.example.com"); !errors.Is(err, core.ErrRouteNotFound) {
 		t.Fatalf("second remove: %v", err)
 	}
+	if via, err := c.SetFallback(ctx, "SEOUL"); err != nil || via != "seoul" {
+		t.Fatalf("set fallback: %q %v", via, err)
+	}
+	if _, err := c.SetFallback(ctx, "nowhere"); !errors.Is(err, config.ErrUnknownUpstream) {
+		t.Fatalf("unknown fallback: %v", err)
+	}
 	st, err := c.Status(ctx)
-	if err != nil || st.Routes != len(app.Routes()) || st.Badge != core.BadgeDisconnected {
+	if err != nil || st.Routes != len(app.Routes()) || st.Badge != core.BadgeDisconnected || st.Fallback != "seoul" {
 		t.Fatalf("status: %+v %v", st, err)
 	}
 	if err := c.RestartSSH(ctx, ""); !errors.Is(err, core.ErrNotRunning) {

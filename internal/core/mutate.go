@@ -25,6 +25,7 @@ func (a *App) Upstreams() []config.Upstream { return a.store.Get().Upstreams }
 
 func (a *App) commitRoutes(cfg config.Config) {
 	a.router.SetRoutes(cfg.Routes)
+	a.router.SetFallback(cfg.Fallback)
 	keep := make(map[string]bool, len(cfg.Routes))
 	for _, r := range cfg.Routes {
 		keep[r.Domain] = true
@@ -206,6 +207,9 @@ func (a *App) UpdateUpstream(oldName string, u config.Upstream) (config.Upstream
 			return errorf(ErrUpstreamMissing, oldName)
 		}
 		c.Upstreams[idx] = u
+		if c.Fallback == oldName {
+			c.Fallback = newName
+		}
 		for i, r := range c.Routes {
 			if r.Mode == router.ModeProxy && r.Upstream == oldName {
 				c.Routes[i].Upstream = newName
@@ -233,6 +237,9 @@ func (a *App) RemoveUpstream(name string) error {
 		if n := c.RoutesVia(name); n > 0 {
 			return fmt.Errorf("%w: %s is used by %d route(s); move them first", ErrUpstreamInUse, name, n)
 		}
+		if c.Fallback == name {
+			return fmt.Errorf("%w: %s is where unmatched traffic goes; change that first", ErrUpstreamInUse, name)
+		}
 		for i, x := range c.Upstreams {
 			if x.Name == name {
 				c.Upstreams = append(c.Upstreams[:i:i], c.Upstreams[i+1:]...)
@@ -246,6 +253,35 @@ func (a *App) RemoveUpstream(name string) error {
 	}
 	a.syncUpstreams(cfg)
 	return nil
+}
+
+// SetFallback 은 어떤 route 에도 매칭되지 않은 연결이 나갈 곳을 정한다.
+// via 는 업스트림 이름 또는 "direct" 다. 빈 문자열은 받지 않는다: route 의 via 와
+// 달리 "첫 업스트림" 이라는 뜻으로 오해되지 않게 하기 위해서다.
+func (a *App) SetFallback(via string) (string, error) {
+	if strings.TrimSpace(via) == "" {
+		return "", fmt.Errorf("%w: empty (use direct or an upstream name)", router.ErrInvalidUpstreamName)
+	}
+	fb := config.NormalizeFallback(via)
+	if fb != "" {
+		if err := router.ValidateUpstreamName(fb); err != nil {
+			return "", err
+		}
+	}
+	cfg, err := a.store.Update(func(c *config.Config) error {
+		if fb != "" {
+			if _, ok := c.Upstream(fb); !ok {
+				return fmt.Errorf("%w %q", config.ErrUnknownUpstream, fb)
+			}
+		}
+		c.Fallback = fb
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	a.router.SetFallback(cfg.Fallback)
+	return cfg.FallbackVia(), nil
 }
 
 // SetLanguage 는 TUI 언어("en", "ko", 자동은 "")를 저장한다.

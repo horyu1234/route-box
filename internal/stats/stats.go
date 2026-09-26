@@ -17,6 +17,8 @@ type Stats struct {
 	rx      atomic.Int64
 	tx      atomic.Int64
 	hits    sync.Map // route 도메인 → *atomic.Int64
+	// unmatched 는 어떤 route 에도 매칭되지 않아 fallback 으로 간 연결 수다.
+	unmatched atomic.Int64
 }
 
 type Snapshot struct {
@@ -39,9 +41,11 @@ func (s *Stats) Attempt(proxied bool) {
 	}
 }
 
-// Hit 은 route 에 매칭된 연결 또는 요청 하나를 센다. 기본 DIRECT(route "")는 세지 않는다.
+// Hit 은 route 에 매칭된 연결 또는 요청 하나를 센다. route 가 "" 이면
+// fallback 으로 간 것이라 Unmatched 로 센다.
 func (s *Stats) Hit(route string) {
 	if route == "" {
+		s.unmatched.Add(1)
 		return
 	}
 	c, ok := s.hits.Load(route)
@@ -50,6 +54,9 @@ func (s *Stats) Hit(route string) {
 	}
 	c.(*atomic.Int64).Add(1)
 }
+
+// Unmatched 는 fallback 으로 간 연결 또는 요청 수다.
+func (s *Stats) Unmatched() int64 { return s.unmatched.Load() }
 
 // Hits 는 route 도메인별 누적 hit 수의 복사본이다.
 func (s *Stats) Hits() map[string]int64 {

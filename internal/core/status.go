@@ -55,9 +55,12 @@ type Status struct {
 	Upstreams []UpstreamStatus `json:"upstreams"`
 	Stats     stats.Snapshot   `json:"stats"`
 	RouteHits map[string]int64 `json:"route_hits,omitempty"` // route 도메인별 hit 수, 이번 실행 동안만 센다
-	Routes    int              `json:"routes"`
-	Direct    int              `json:"direct_routes"`
-	Warnings  []string         `json:"warnings,omitempty"`
+	// Fallback 은 매칭되지 않은 연결이 나가는 곳: 업스트림 이름 또는 "direct".
+	Fallback     string   `json:"fallback"`
+	FallbackHits int64    `json:"fallback_hits"`
+	Routes       int      `json:"routes"`
+	Direct       int      `json:"direct_routes"`
+	Warnings     []string `json:"warnings,omitempty"`
 }
 
 func (s Status) Uptime() time.Duration {
@@ -112,6 +115,7 @@ func (a *App) Status() Status {
 	}
 	st.Stats = a.stats.Snapshot()
 	st.Routes = len(cfg.Routes)
+	st.Fallback, st.FallbackHits = cfg.FallbackVia(), a.stats.Unmatched()
 	hits := a.stats.Hits()
 	for _, r := range cfg.Routes {
 		if n := hits[r.Domain]; n > 0 {

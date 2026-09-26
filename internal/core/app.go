@@ -25,7 +25,7 @@ var (
 	ErrRouteNotFound   = errors.New("route not found")
 	ErrNoUpstream      = errors.New("no upstream configured")
 	ErrNotRunning      = errors.New("RouteBox is not running")
-	ErrUpstreamInUse   = errors.New("upstream is still used by routes")
+	ErrUpstreamInUse   = errors.New("upstream is still in use")
 	ErrUpstreamMissing = errors.New("upstream not found")
 	ErrNotManaged      = errors.New("upstream is not a managed SSH tunnel")
 	ErrNoPendingKey    = errors.New("no fetched host key to trust; fetch it again")
@@ -119,6 +119,7 @@ func New(opts Options) *App {
 		health:        map[string]Health{},
 		pendingKeys:   map[string]ssh.HostKey{},
 	}
+	a.router.SetFallback(cfg.Fallback)
 	a.transport = proxy.NewTransport(opts.Direct, nil)
 	a.syncUpstreams(cfg)
 	return a

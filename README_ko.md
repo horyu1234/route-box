@@ -51,7 +51,7 @@
 - 로컬에 **HTTP CONNECT 프록시**를 엽니다(기본 `127.0.0.1:8080`).
 - **업스트림**을 원하는 만큼 등록합니다. RouteBox가 직접 띄우고 감시하는 SSH 터널(`ssh -N -D`)이거나, 이미 실행 중인 SOCKS5 서버입니다.
 - **라우트**를 등록합니다. 도메인(과 그 모든 서브도메인) 또는 정확한 IPv4/IPv6 주소를 특정 업스트림으로(**via**) 보내거나 `direct`로 보냅니다.
-- 어떤 라우트에도 해당하지 않으면 **직접 연결**합니다.
+- 어떤 라우트에도 해당하지 않으면 기본으로 **직접 연결**하고, 원하면 고른 업스트림으로 보냅니다.
 - 변경은 **즉시** 반영됩니다. 기존 연결은 그대로 두고 새 연결부터 새 규칙을 탑니다.
 - TLS를 절대 복호화하지 않습니다. 인증서 생성·MITM·SNI 변경이 없고, CONNECT 터널은 바이트를 그대로 중계합니다.
 
@@ -73,7 +73,7 @@ RouteBox 127.0.0.1:8080 ── 라우트 조회: example.com → via seoul
 
 - **매칭.** `example.com` 라우트는 `example.com`, `www.example.com`, `a.b.example.com`을 포함하고, `notexample.com`이나 `example.com.attacker.net`은 포함하지 않습니다. 호스트 레이블을 하나씩 떼어 가며 찾으므로 **가장 구체적인 라우트가 이깁니다**. `example.com → seoul`과 `intranet.example.com → direct`를 함께 두면 인트라넷만 직접 연결됩니다. IP 라우트는 그 주소와 정확히 같을 때만 적용됩니다.
 - **DNS는 원격에서.** 업스트림으로 가는 연결은 로컬 resolver를 한 번도 쓰지 않습니다. hostname을 SOCKS 서버에 도메인 타입(ATYP `0x03`)으로 넘기므로 이름 해석은 터널 반대편에서 일어납니다. 로컬 DNS가 막거나 조작해도 라우팅한 도메인은 영향을 받지 않습니다. 테스트로 고정되어 있습니다([아키텍처](#16-아키텍처) 참고).
-- **실패 시 차단(fail closed).** 라우트의 업스트림이 죽었거나 삭제됐으면 `502 Bad Gateway`를 돌려줍니다. 다른 업스트림이나 직접 연결로 몰래 새지 않습니다.
+- **실패 시 차단(fail closed).** 라우트의 업스트림이 죽었거나 삭제됐으면 `502 Bad Gateway`를 돌려줍니다. 다른 업스트림이나 직접 연결로 몰래 새지 않습니다. **그 외 전부**를 업스트림으로 보낼 때 매칭되지 않은 트래픽도 마찬가지입니다.
 
 ## 3. 왜 쓰나
 
@@ -238,6 +238,7 @@ TUI에서:
 - **`a`** — 라우트 추가. 도메인이나 IP 주소를 입력하거나 URL을 통째로 붙여 넣습니다. `https://WWW.Example.com:443/watch?v=1`은 `www.example.com`으로 저장됩니다(scheme·path·query·port 제거, 소문자, 끝의 `.` 제거). **경로(Via)**는 ←/→ 로 고릅니다.
 - **`v`**(또는 스페이스) — 선택한 라우트를 다음 업스트림으로 보냅니다. 마지막 업스트림 다음은 `direct`입니다. 바로 적용됩니다.
 - **`e`** — 도메인과 경로 편집. **`d`** — 삭제.
+- **그 외 전부** — 라우트 목록 아래 행으로, 어떤 라우트에도 매칭되지 않은 트래픽이 나가는 곳입니다. 기본값은 `DIRECT`이고, `v`(또는 `enter`)로 다음 업스트림으로 보내며 마지막 다음은 다시 `direct`입니다. 여기서 쓰는 업스트림은 이걸 바꾸기 전까지 삭제할 수 없습니다.
 - 라우트마다 나가는 곳(`→ seoul`, `DIRECT`)이 그 업스트림의 상태 색으로 표시되고, 그 옆에 hit 수, 즉 RouteBox가 시작된 뒤 그 라우트에 매칭된 연결·요청 수가 표시됩니다(`12k` = 12,000 이상). 서브도메인 요청은 매칭된 라우트로 셉니다. 재시작하거나 라우트를 삭제하거나 도메인을 편집하면 0으로 돌아가지만, `v`로 옮기면 유지됩니다.
 
 CLI로:
@@ -247,6 +248,7 @@ routebox route add example.com --via seoul
 routebox route add 203.0.113.10 --via lab
 routebox route add intranet.example.com --via direct   # example.com 안의 예외
 routebox route via example.com tokyo                   # 라우트 옮기기
+routebox route default seoul                           # 매칭되지 않은 트래픽을 seoul로 (`direct`로 되돌리기)
 routebox route list                                    # RouteBox가 실행 중이면 HITS 열 표시
 ```
 
@@ -279,7 +281,7 @@ routebox --preset <이름>        # 시작하면서 추가
 | `↑`/`k`, `↓`/`j` | 선택 이동 (로그에 포커스가 있으면 스크롤) |
 | `tab` | 라우트 ↔ 실시간 연결 포커스 전환 |
 | `a` | 라우트 추가 |
-| `v` / 스페이스 | 선택한 라우트를 다음 업스트림으로 |
+| `v` / 스페이스 | 선택한 라우트를 다음 업스트림으로 (**그 외 전부**에서는 매칭되지 않은 트래픽이 나갈 곳을 바꿈) |
 | `e` / `enter` | 선택한 라우트 편집 (`+ 라우트 추가` 행에서는 추가) |
 | `d` | 선택한 라우트 삭제 (`y`로 확인) |
 | `p` | preset 추가 |
@@ -313,6 +315,7 @@ routebox upstream remove lab
 
 routebox route add example.com --via seoul
 routebox route via example.com tokyo
+routebox route default [업스트림|direct]    # 매칭되지 않은 트래픽이 나갈 곳
 routebox route remove example.com
 routebox route list                        # --json
 
@@ -356,10 +359,12 @@ CLI와 TUI는 같은 코어(`internal/core`)를 씁니다. RouteBox가 실행 �
     { "domain": "example.org", "mode": "proxy", "upstream": "tokyo" },
     { "domain": "203.0.113.10", "mode": "proxy", "upstream": "lab" },
     { "domain": "intranet.example.com", "mode": "direct" }
-  ]
+  ],
+  "fallback": "seoul"
 }
 ```
 
+- `fallback`은 어떤 라우트에도 매칭되지 않은 트래픽이 나갈 업스트림입니다. 생략하거나 `"direct"`로 두면 직접 연결합니다.
 - `user`/`port`/`identity_file`를 생략하면 `~/.ssh/config`를 따릅니다. `"port": 22`를 적으면 `-p 22`를 넘겨 그 값을 덮어씁니다.
 - 변경은 즉시 저장되며 **atomic write**입니다. 같은 디렉터리의 임시 파일에 쓰고 fsync 한 뒤 rename 합니다. 파일은 `0600`, 디렉터리는 `0700`입니다.
 - 설정을 읽지 못하면 RouteBox는 **원본을 지우거나 덮어쓰지 않습니다.** TUI는 오류를 보여 주고, 안전한 기본값으로 계속하기를 고르면 먼저 `config.json.bak-YYYYMMDD-HHMMSS`로 백업합니다. `--no-tui`와 CLI는 오류를 출력하고 종료합니다.
@@ -382,7 +387,7 @@ CLI와 TUI는 같은 코어(`internal/core`)를 씁니다. RouteBox가 실행 �
 | `SOCKS address already used by another upstream` | 업스트림마다 SOCKS 주소가 달라야 합니다. |
 | `listen 127.0.0.1:8080: address already in use` | 다른 앱이 8080을 씁니다. `--listen 127.0.0.1:8081`이나 설정의 `listen`을 바꾸고 Firefox도 맞추세요. |
 | `another RouteBox instance is already running` | `routebox status`로 확인하거나 그 인스턴스를 종료하세요. |
-| `upstream is still used by routes` | 삭제하기 전에 그 라우트들을 다른 업스트림으로 옮기세요(`v` 또는 `routebox route via`). |
+| `upstream is still in use` | 삭제하기 전에 그 라우트들을 다른 업스트림으로 옮기세요(`v` 또는 `routebox route via`). 매칭되지 않은 트래픽이 그 업스트림으로 나가고 있다면 그것부터 바꾸세요(**그 외 전부** 행에서 `v`, 또는 `routebox route default`). |
 | 라우팅한 사이트가 `502` | 그 라우트의 업스트림이 죽어 있습니다. 배지가 `일부 장애`/`재연결 중`이고 하단에 어느 업스트림인지 보입니다. 의도적으로 다른 경로로 새지 않습니다. |
 | 새 라우트를 무시하는 것 같음 | 브라우저가 기존 연결을 재사용하고 있습니다. 규칙은 **새 연결**부터 적용됩니다. 탭을 새로 고치거나 잠시 기다리세요. Firefox 설정 4번도 확인하세요. |
 | 서비스 일부가 여전히 직접 연결됨 | 서비스가 라우트보다 많은 도메인을 씁니다. 실시간 연결의 `DIRECT` 항목을 보고 추가하세요. |

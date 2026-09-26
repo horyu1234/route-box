@@ -172,6 +172,61 @@ func TestRouteHitsFollowTheRouteList(t *testing.T) {
 	}
 }
 
+func TestFallbackFollowsUpstreamAndBlocksRemoval(t *testing.T) {
+	a := newApp(t, func(c *config.Config) {
+		c.Upstreams = []config.Upstream{external("seoul", "127.0.0.1:1080"), external("tokyo", "127.0.0.1:1081")}
+	})
+	host, _ := router.ParseHost("unmatched.example.net")
+	if d := a.router.Decide(host); d.Mode != router.ModeDirect || a.Status().Fallback != "direct" {
+		t.Fatalf("default fallback = %+v / %q, want direct", d, a.Status().Fallback)
+	}
+	for _, bad := range []string{"", "nowhere"} {
+		if _, err := a.SetFallback(bad); err == nil {
+			t.Fatalf("SetFallback(%q) accepted", bad)
+		}
+	}
+	if via, err := a.SetFallback("Tokyo"); err != nil || via != "tokyo" {
+		t.Fatalf("set: %q %v", via, err)
+	}
+	if d := a.router.Decide(host); d.Mode != router.ModeProxy || d.Upstream != "tokyo" || d.Matched != "" {
+		t.Fatalf("decide = %+v", d)
+	}
+	if err := a.RemoveUpstream("tokyo"); !errors.Is(err, ErrUpstreamInUse) {
+		t.Fatalf("removed the fallback upstream: %v", err)
+	}
+	u := external("osaka", "127.0.0.1:1081")
+	if _, err := a.UpdateUpstream("tokyo", u); err != nil {
+		t.Fatal(err)
+	}
+	if d := a.router.Decide(host); d.Upstream != "osaka" || a.Status().Fallback != "osaka" {
+		t.Fatalf("fallback did not follow rename: %+v", d)
+	}
+	disk, err := config.Load(a.ConfigPath())
+	if err != nil || disk.Fallback != "osaka" {
+		t.Fatalf("disk fallback = %q, %v", disk.Fallback, err)
+	}
+	if via, err := a.SetFallback("direct"); err != nil || via != "direct" {
+		t.Fatalf("back to direct: %q %v", via, err)
+	}
+	if d := a.router.Decide(host); d.Mode != router.ModeDirect {
+		t.Fatalf("decide = %+v", d)
+	}
+	if err := a.RemoveUpstream("osaka"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFallbackFromConfigAppliesAtStart(t *testing.T) {
+	a := newApp(t, func(c *config.Config) {
+		c.Upstreams = []config.Upstream{external("seoul", "127.0.0.1:1080")}
+		c.Fallback = "seoul"
+	})
+	host, _ := router.ParseHost("unmatched.example.net")
+	if d := a.router.Decide(host); d.Mode != router.ModeProxy || d.Upstream != "seoul" {
+		t.Fatalf("decide = %+v", d)
+	}
+}
+
 func TestRoutesAddedBeforeAnyUpstreamArePinnedLater(t *testing.T) {
 	a := newApp(t, nil)
 	if r, err := a.AddRoute("example.com", ""); err != nil || r.Upstream != "" {
