@@ -1,6 +1,8 @@
 package components
 
 import (
+	"fmt"
+
 	"github.com/horyu1234/route-box/internal/router"
 	"github.com/horyu1234/route-box/internal/tui/i18n"
 )
@@ -36,8 +38,9 @@ func (l *RouteList) Ensure(rows, height int) {
 
 func (l RouteList) OnAddRow(n int) bool { return l.Cursor == n }
 
-// View 는 최대 height 행을 너비 w 로 그린다. health 는 업스트림 이름별 상태다.
-func (l RouteList) View(routes []router.Route, health map[string]UpHealth, w, height int, focused bool, lang i18n.Lang) []string {
+// View 는 최대 height 행을 너비 w 로 그린다. health 는 업스트림 이름별 상태,
+// hits 는 route 도메인별 hit 수다.
+func (l RouteList) View(routes []router.Route, health map[string]UpHealth, hits map[string]int64, w, height int, focused bool, lang i18n.Lang) []string {
 	if len(routes) == 0 && height >= 4 {
 		lines := []string{
 			Dim.Render(lang.T("No routes yet.")),
@@ -55,26 +58,54 @@ func (l RouteList) View(routes []router.Route, health map[string]UpHealth, w, he
 			lines = append(lines, l.addRow(i, w, focused, lang))
 			continue
 		}
-		lines = append(lines, l.routeRow(routes[i], health, i, w, focused, lang))
+		lines = append(lines, l.routeRow(routes[i], health, hits[routes[i].Domain], i, w, focused, lang))
 	}
 	return lines
 }
 
-func (l RouteList) routeRow(r router.Route, health map[string]UpHealth, i, w int, focused bool, lang i18n.Lang) string {
+// hitW 는 hit 열 너비다. CompactCount 는 999G 까지 이 안에 들어간다.
+const hitW = 4
+
+func (l RouteList) routeRow(r router.Route, health map[string]UpHealth, hits int64, i, w int, focused bool, lang i18n.Lang) string {
 	dot, tag := Accent.Render("●"), ViaTag(r, health, lang)
 	if r.Mode == router.ModeDirect {
 		dot = Gray.Render("○")
 	}
 	selected := i == l.Cursor && focused
 	tagW := min(14, max(8, w/3))
-	name := Truncate(r.Domain, max(1, w-3-tagW-1))
+	nameW := w - 3 - tagW - 1
+	right := Truncate(tag, tagW)
+	// 도메인 이름이 너무 좁아지지 않을 때만 hit 열을 보인다.
+	if nameW-hitW-1 >= 10 {
+		nameW -= hitW + 1
+		st := Dim
+		if hits > 0 {
+			st = Text
+		}
+		right += " " + st.Render(fmt.Sprintf("%*s", hitW, CompactCount(hits)))
+	}
+	name := Truncate(r.Domain, max(1, nameW))
 	if selected {
 		name = Bold.Foreground(ColorText).Render(name)
 	} else {
 		name = Text.Render(name)
 	}
-	row := Spread(dot+" "+name, Truncate(tag, tagW), w-1)
+	row := Spread(dot+" "+name, right, w-1)
 	return l.decorate(row, i, w, focused)
+}
+
+// CompactCount 는 n 을 4 셀 이내로 줄여 쓴다: 9999, 10k, 999k, 1M ….
+func CompactCount(n int64) string {
+	switch {
+	case n < 10_000:
+		return fmt.Sprintf("%d", n)
+	case n < 1_000_000:
+		return fmt.Sprintf("%dk", n/1_000)
+	case n < 1_000_000_000:
+		return fmt.Sprintf("%dM", n/1_000_000)
+	default:
+		return fmt.Sprintf("%dG", n/1_000_000_000)
+	}
 }
 
 // ViaTag 는 route 가 어디로 나가는지를 업스트림 상태 색으로 보여 준다.

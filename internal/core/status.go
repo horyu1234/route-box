@@ -54,6 +54,7 @@ type Status struct {
 	Proxy     ProxyStatus      `json:"proxy"`
 	Upstreams []UpstreamStatus `json:"upstreams"`
 	Stats     stats.Snapshot   `json:"stats"`
+	RouteHits map[string]int64 `json:"route_hits,omitempty"` // route 도메인별 hit 수, 이번 실행 동안만 센다
 	Routes    int              `json:"routes"`
 	Direct    int              `json:"direct_routes"`
 	Warnings  []string         `json:"warnings,omitempty"`
@@ -111,7 +112,14 @@ func (a *App) Status() Status {
 	}
 	st.Stats = a.stats.Snapshot()
 	st.Routes = len(cfg.Routes)
+	hits := a.stats.Hits()
 	for _, r := range cfg.Routes {
+		if n := hits[r.Domain]; n > 0 {
+			if st.RouteHits == nil {
+				st.RouteHits = make(map[string]int64)
+			}
+			st.RouteHits[r.Domain] = n
+		}
 		if r.Via() == "direct" {
 			st.Direct++
 		}

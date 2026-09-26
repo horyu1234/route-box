@@ -29,3 +29,23 @@ func TestCountersAreConcurrencySafe(t *testing.T) {
 		t.Fatalf("snapshot = %+v, want %+v", got, want)
 	}
 }
+
+func TestHitsPerRoute(t *testing.T) {
+	var s Stats
+	var wg sync.WaitGroup
+	for i := range 30 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.Hit([]string{"example.com", "example.org", ""}[i%3])
+		}()
+	}
+	wg.Wait()
+	if got := s.Hits(); len(got) != 2 || got["example.com"] != 10 || got["example.org"] != 10 {
+		t.Fatalf("hits = %v", got)
+	}
+	s.RetainHits(map[string]bool{"example.org": true})
+	if got := s.Hits(); len(got) != 1 || got["example.org"] != 10 {
+		t.Fatalf("after retain: %v", got)
+	}
+}

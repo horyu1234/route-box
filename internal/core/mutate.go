@@ -25,6 +25,11 @@ func (a *App) Upstreams() []config.Upstream { return a.store.Get().Upstreams }
 
 func (a *App) commitRoutes(cfg config.Config) {
 	a.router.SetRoutes(cfg.Routes)
+	keep := make(map[string]bool, len(cfg.Routes))
+	for _, r := range cfg.Routes {
+		keep[r.Domain] = true
+	}
+	a.stats.RetainHits(keep)
 	a.publish(events.RoutesChanged{Time: time.Now(), Routes: cfg.Routes})
 }
 

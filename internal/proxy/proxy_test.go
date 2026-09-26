@@ -316,6 +316,30 @@ func TestProxyRouteFailsClosedWhenSocksIsDown(t *testing.T) {
 	if e.Error == nil || e.Route != router.ModeProxy {
 		t.Fatalf("event = %+v", e)
 	}
+	// 실패한 연결도 매칭된 route 의 hit 이다; 서브도메인은 그 route 로 센다.
+	if hits := h.stats.Hits(); len(hits) != 1 || hits["example.com"] != 1 {
+		t.Fatalf("hits = %v", hits)
+	}
+}
+
+func TestHitsKeyedByConfiguredRouteDomain(t *testing.T) {
+	target := echoServer(t, "tcp6", "[::1]:0")
+	_, port, _ := net.SplitHostPort(target)
+	v6, err := router.NewRoute("[::1]", "direct")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, target, []router.Route{v6})
+	for range 2 {
+		c, br, resp := connect(t, h.addr, "[0:0::1]:"+port, "x")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		readAll(t, c, br)
+	}
+	if hits := h.stats.Hits(); len(hits) != 1 || hits[v6.Domain] != 2 {
+		t.Fatalf("hits = %v, want %s: 2", hits, v6.Domain)
+	}
 }
 
 func TestRouteChangeAppliesToNextConnection(t *testing.T) {
@@ -491,6 +515,10 @@ func TestPlainHTTPDirectAndProxy(t *testing.T) {
 	}
 	if h.resolves.Load() != 0 {
 		t.Fatal("plain HTTP PROXY route used the local resolver")
+	}
+	// 매칭되지 않은 기본 DIRECT 는 세지 않고, dialForHTTP 가 다시 Decide 해도 두 번 세지 않는다.
+	if hits := h.stats.Hits(); len(hits) != 1 || hits["web.proxied"] != 1 {
+		t.Fatalf("hits = %v", hits)
 	}
 	for _, e := range h.connEvents() {
 		if strings.Contains(fmt.Sprintf("%+v", e), "secret") || strings.Contains(e.Host, "?") {

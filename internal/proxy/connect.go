@@ -31,6 +31,7 @@ func (s *Server) handleConnect(ctx context.Context, c *countingConn, br *bufio.R
 	decision := s.router.Decide(host)
 	ev := s.newEvent(http.MethodConnect, host, port, decision)
 	s.stats.Attempt(decision.Mode == router.ModeProxy)
+	s.stats.Hit(decision.Matched)
 
 	dialCtx, cancel := context.WithTimeout(ctx, s.opts.ConnectTimeout)
 	upstream, err := s.transport.Dial(dialCtx, decision, host, port)

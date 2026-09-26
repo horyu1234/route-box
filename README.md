@@ -238,7 +238,7 @@ In the TUI:
 - **`a`** — add a route. Type a domain, an IP address, or paste a whole URL: `https://WWW.Example.com:443/watch?v=1` is stored as `www.example.com` (scheme, path, query and port removed, lower-cased, trailing dot removed). Pick **Via** with ←/→.
 - **`v`** (or space) — send the selected route to the next upstream; after the last upstream comes `direct`. The change applies immediately.
 - **`e`** — edit domain and via. **`d`** — delete.
-- Each route shows where it goes (`→ seoul`, `DIRECT`), coloured by that upstream's health.
+- Each route shows where it goes (`→ seoul`, `DIRECT`), coloured by that upstream's health, followed by its hit count: how many connections and requests it matched since RouteBox started (`12k` = 12,000+). A subdomain request counts toward the route that matched it; counts reset on restart, when the route is removed or its domain is edited, but survive `v`.
 
 From the CLI:
 
@@ -247,7 +247,7 @@ routebox route add example.com --via seoul
 routebox route add 203.0.113.10 --via lab
 routebox route add intranet.example.com --via direct   # exception inside example.com
 routebox route via example.com tokyo                   # move a route
-routebox route list
+routebox route list                                    # HITS column while RouteBox is running
 ```
 
 A route added before any upstream exists is attached to the first upstream you create. After that, routes always name their upstream explicitly, so reordering upstreams never reroutes anything. An upstream that routes still use cannot be deleted — move those routes first (`v`).

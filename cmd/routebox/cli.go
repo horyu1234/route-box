@@ -206,8 +206,17 @@ func newRouteCmd(configPath *string) *cobra.Command {
 				return err
 			}
 			routes := []router.Route{}
+			// hits 는 실행 중인 인스턴스가 이번 실행 동안 센 값이라, 꺼져 있으면 nil 이다.
+			var hits map[string]int64
 			if s.running() {
-				routes, err = s.client.Routes(ctx)
+				var st core.Status
+				if routes, err = s.client.Routes(ctx); err == nil {
+					st, err = s.client.Status(ctx)
+					hits = st.RouteHits
+					if hits == nil {
+						hits = map[string]int64{}
+					}
+				}
 			} else {
 				routes = s.app.Routes()
 			}
@@ -215,16 +224,34 @@ func newRouteCmd(configPath *string) *cobra.Command {
 				return err
 			}
 			if asJSON {
-				return printJSON(cmd.OutOrStdout(), routes)
+				if hits == nil {
+					return printJSON(cmd.OutOrStdout(), routes)
+				}
+				type routeWithHits struct {
+					router.Route
+					Hits int64 `json:"hits"`
+				}
+				out := make([]routeWithHits, len(routes))
+				for i, r := range routes {
+					out[i] = routeWithHits{r, hits[r.Domain]}
+				}
+				return printJSON(cmd.OutOrStdout(), out)
 			}
 			if len(routes) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No routes. Add one with: routebox route add example.com --via <upstream>")
 				return nil
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			fmt.Fprintln(tw, "DOMAIN\tVIA")
-			for _, r := range routes {
-				fmt.Fprintf(tw, "%s\t%s\n", r.Domain, viaLabel(r))
+			if hits == nil {
+				fmt.Fprintln(tw, "DOMAIN\tVIA")
+				for _, r := range routes {
+					fmt.Fprintf(tw, "%s\t%s\n", r.Domain, viaLabel(r))
+				}
+			} else {
+				fmt.Fprintln(tw, "DOMAIN\tVIA\tHITS")
+				for _, r := range routes {
+					fmt.Fprintf(tw, "%s\t%s\t%d\n", r.Domain, viaLabel(r), hits[r.Domain])
+				}
 			}
 			return tw.Flush()
 		},

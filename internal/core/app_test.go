@@ -141,6 +141,37 @@ func TestRouteMutationsPersistAndApply(t *testing.T) {
 	}
 }
 
+func TestRouteHitsFollowTheRouteList(t *testing.T) {
+	a := newApp(t, func(c *config.Config) {
+		c.Upstreams = []config.Upstream{external("seoul", "127.0.0.1:1080"), external("tokyo", "127.0.0.1:1081")}
+	})
+	for _, d := range []string{"example.com", "example.org"} {
+		if _, err := a.AddRoute(d, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.stats.Hit("example.com")
+	a.stats.Hit("example.com")
+	a.stats.Hit("example.org")
+	a.stats.Hit("example.net") // 설정에 없는 route 는 Status 에 나오지 않는다
+
+	if _, err := a.SetRouteVia("example.com", "tokyo"); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Status().RouteHits; len(got) != 2 || got["example.com"] != 2 || got["example.org"] != 1 {
+		t.Fatalf("hits after via change = %v", got)
+	}
+	if _, err := a.RemoveRoute("example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddRoute("example.com", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Status().RouteHits; len(got) != 1 || got["example.org"] != 1 {
+		t.Fatalf("re-added route kept its old hits: %v", got)
+	}
+}
+
 func TestRoutesAddedBeforeAnyUpstreamArePinnedLater(t *testing.T) {
 	a := newApp(t, nil)
 	if r, err := a.AddRoute("example.com", ""); err != nil || r.Upstream != "" {

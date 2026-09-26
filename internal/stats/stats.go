@@ -1,7 +1,10 @@
 // Package stats 는 프로세스 전역 트래픽 카운터를 보관한다.
 package stats
 
-import "sync/atomic"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 // Stats 는 동시 사용에 안전하다. RX 는 클라이언트에게 전달된 바이트(download),
 // TX 는 클라이언트가 보낸 바이트(upload)다.
@@ -13,6 +16,7 @@ type Stats struct {
 	failed  atomic.Int64
 	rx      atomic.Int64
 	tx      atomic.Int64
+	hits    sync.Map // route 도메인 → *atomic.Int64
 }
 
 type Snapshot struct {
@@ -33,6 +37,38 @@ func (s *Stats) Attempt(proxied bool) {
 	} else {
 		s.direct.Add(1)
 	}
+}
+
+// Hit 은 route 에 매칭된 연결 또는 요청 하나를 센다. 기본 DIRECT(route "")는 세지 않는다.
+func (s *Stats) Hit(route string) {
+	if route == "" {
+		return
+	}
+	c, ok := s.hits.Load(route)
+	if !ok {
+		c, _ = s.hits.LoadOrStore(route, new(atomic.Int64))
+	}
+	c.(*atomic.Int64).Add(1)
+}
+
+// Hits 는 route 도메인별 누적 hit 수의 복사본이다.
+func (s *Stats) Hits() map[string]int64 {
+	out := make(map[string]int64)
+	s.hits.Range(func(k, v any) bool {
+		out[k.(string)] = v.(*atomic.Int64).Load()
+		return true
+	})
+	return out
+}
+
+// RetainHits 는 keep 에 없는 route 의 hit 수를 버린다. 지웠다가 다시 추가한 route 는 0 부터 센다.
+func (s *Stats) RetainHits(keep map[string]bool) {
+	s.hits.Range(func(k, _ any) bool {
+		if !keep[k.(string)] {
+			s.hits.Delete(k)
+		}
+		return true
+	})
 }
 
 func (s *Stats) Fail()       { s.failed.Add(1) }

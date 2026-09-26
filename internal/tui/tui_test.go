@@ -377,6 +377,7 @@ func TestResponsiveLayoutsFitTerminalInBothLanguages(t *testing.T) {
 				{Domain: "a-very-long-subdomain-name.for-testing-truncation.example.net", Mode: router.ModeProxy, Upstream: "lab"},
 			}
 		}, func(o *Options) { o.Lang = string(lang) })
+		m.status.RouteHits = map[string]int64{"example.com": 12_345, "a-very-long-subdomain-name.for-testing-truncation.example.net": 987_654_321_000}
 		m.conns = []events.ConnectionEvent{
 			{Time: time.Now(), Host: "cdn.example.com", Port: "443", Route: router.ModeProxy, Upstream: "seoul", State: events.ConnClosed, BytesIn: 1 << 20},
 			{Time: time.Now(), Host: "example.org", Port: "443", Route: router.ModeDirect, State: events.ConnFailed, Error: errors.New("dial: connection refused")},
@@ -397,8 +398,9 @@ func TestResponsiveLayoutsFitTerminalInBothLanguages(t *testing.T) {
 		twoUpstreams(c)
 		c.Routes = []router.Route{{Domain: "example.com", Mode: router.ModeProxy, Upstream: "seoul"}}
 	})
+	m.status.RouteHits = map[string]int64{"example.com": 12_345}
 	wide := plain(resize(m, 120, 36).View())
-	for _, want := range []string{"RouteBox", "ROUTES", "LIVE CONNECTIONS", "example.com", "→ seoul", "seoul", "lab", "SOCKS 127.0.0.1:9050", "[a] add"} {
+	for _, want := range []string{"RouteBox", "ROUTES", "LIVE CONNECTIONS", "example.com", "→ seoul  12k", "seoul", "lab", "SOCKS 127.0.0.1:9050", "[a] add"} {
 		if !strings.Contains(wide, want) {
 			t.Errorf("wide view missing %q", want)
 		}

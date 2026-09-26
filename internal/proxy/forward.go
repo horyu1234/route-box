@@ -51,6 +51,7 @@ func (s *Server) handleHTTP(ctx context.Context, c *countingConn, req *http.Requ
 	decision := s.router.Decide(host)
 	ev := s.newEvent("HTTP", host, port, decision)
 	s.stats.Attempt(decision.Mode == router.ModeProxy)
+	s.stats.Hit(decision.Matched)
 	readBefore, writtenBefore := c.read.Load(), c.written.Load()
 
 	clientClose := req.Close

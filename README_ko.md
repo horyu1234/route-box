@@ -238,7 +238,7 @@ TUI에서:
 - **`a`** — 라우트 추가. 도메인이나 IP 주소를 입력하거나 URL을 통째로 붙여 넣습니다. `https://WWW.Example.com:443/watch?v=1`은 `www.example.com`으로 저장됩니다(scheme·path·query·port 제거, 소문자, 끝의 `.` 제거). **경로(Via)**는 ←/→ 로 고릅니다.
 - **`v`**(또는 스페이스) — 선택한 라우트를 다음 업스트림으로 보냅니다. 마지막 업스트림 다음은 `direct`입니다. 바로 적용됩니다.
 - **`e`** — 도메인과 경로 편집. **`d`** — 삭제.
-- 라우트마다 나가는 곳(`→ seoul`, `DIRECT`)이 그 업스트림의 상태 색으로 표시됩니다.
+- 라우트마다 나가는 곳(`→ seoul`, `DIRECT`)이 그 업스트림의 상태 색으로 표시되고, 그 옆에 hit 수, 즉 RouteBox가 시작된 뒤 그 라우트에 매칭된 연결·요청 수가 표시됩니다(`12k` = 12,000 이상). 서브도메인 요청은 매칭된 라우트로 셉니다. 재시작하거나 라우트를 삭제하거나 도메인을 편집하면 0으로 돌아가지만, `v`로 옮기면 유지됩니다.
 
 CLI로:
 
@@ -247,7 +247,7 @@ routebox route add example.com --via seoul
 routebox route add 203.0.113.10 --via lab
 routebox route add intranet.example.com --via direct   # example.com 안의 예외
 routebox route via example.com tokyo                   # 라우트 옮기기
-routebox route list
+routebox route list                                    # RouteBox가 실행 중이면 HITS 열 표시
 ```
 
 업스트림이 하나도 없을 때 추가한 라우트는 처음 만드는 업스트림에 붙습니다. 그 뒤로 라우트는 항상 업스트림 이름을 명시하므로, 업스트림 순서를 바꿔도 다른 출구로 옮겨 가지 않습니다. 라우트가 쓰고 있는 업스트림은 삭제할 수 없습니다. 먼저 그 라우트들을 옮기세요(`v`).
