@@ -19,6 +19,7 @@ import (
 	"github.com/horyu1234/route-box/internal/events"
 	"github.com/horyu1234/route-box/internal/router"
 	"github.com/horyu1234/route-box/internal/ssh"
+	"github.com/horyu1234/route-box/internal/ssh/sshtest"
 	"github.com/horyu1234/route-box/internal/tui/i18n"
 )
 
@@ -526,5 +527,101 @@ func TestPanelDrivesBackgroundInstance(t *testing.T) {
 	m = press(t, m, "L")
 	if app.Config().Language != "ko" {
 		t.Errorf("language not saved on the instance: %q", app.Config().Language)
+	}
+}
+
+// runCmd 는 tea.Cmd 를 실행해 나온 메시지를 모델에 넘긴다.
+func runCmd(t *testing.T, m Model, cmd tea.Cmd) Model {
+	t.Helper()
+	if cmd == nil {
+		t.Fatal("expected a command")
+	}
+	next, _ := m.Update(cmd())
+	return next.(Model)
+}
+
+func hostKeyModel(t *testing.T, mode sshtest.Mode, lang string) (Model, sshtest.Fake) {
+	t.Helper()
+	fake := sshtest.New(t, mode)
+	cfg := config.Default()
+	cfg.Upstreams = []config.Upstream{{Name: "icn-01", Mode: config.SSHManaged, Host: "fake.example.net", Socks: "127.0.0.1:1080", Reconnect: true}}
+	app := core.New(core.Options{ConfigPath: filepath.Join(t.TempDir(), "config.json"), Config: cfg, SSHBin: fake.Bin})
+	m := New(Options{App: app, Start: func() {}, Shutdown: func() {}, Lang: lang})
+	t.Cleanup(m.unsub)
+	return resize(m, 120, 36), fake
+}
+
+func TestHostKeyFailureLeadsToFingerprintConfirmation(t *testing.T) {
+	m, fake := hostKeyModel(t, sshtest.Unknown, "en")
+	next, _ := m.Update(eventMsg{events.SSHStateChanged{Upstream: "icn-01", Status: ssh.Status{State: ssh.StateReconnecting, Err: "Host key verification failed. (exit status 255)"}}})
+	m = next.(Model)
+	if !strings.Contains(plain(m.View()), "icn-01: unknown host key — press s, then t to check it") {
+		t.Fatal("host key failure toast should say how to fix it")
+	}
+
+	m = press(t, m, "s")
+	if !strings.Contains(plain(m.View()), "[t] host key") {
+		t.Error("upstream manager should offer t for a managed upstream")
+	}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	m = next.(Model)
+	if m.modal != modalHostKey || !strings.Contains(plain(m.View()), "Fetching the host key") {
+		t.Fatal("t should start fetching without blocking")
+	}
+	m = runCmd(t, m, cmd)
+	v := plain(m.View())
+	for _, want := range []string{sshtest.Fingerprint, "Trusting saves it to", "[y] trust"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("confirmation missing %q:\n%s", want, v)
+		}
+	}
+	if _, err := os.Stat(fake.KnownHosts); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("nothing may be saved before the user confirms")
+	}
+	m = press(t, m, "y")
+	if b, _ := os.ReadFile(fake.KnownHosts); !strings.Contains(string(b), sshtest.Key) || m.modal != modalUpstreams {
+		t.Fatalf("trust did not save the key (modal %v): %q", m.modal, b)
+	}
+	if !strings.Contains(plain(m.View()), "Host key saved") {
+		t.Error("no confirmation toast")
+	}
+}
+
+func TestChangedHostKeyIsNeverOfferedForTrust(t *testing.T) {
+	m, fake := hostKeyModel(t, sshtest.Changed, "en")
+	next, cmd := press(t, m, "s").Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	m = runCmd(t, next.(Model), cmd)
+	v := plain(m.View())
+	if !strings.Contains(v, "CHANGED") || !strings.Contains(v, "ssh-keygen -R fake.example.net") || strings.Contains(v, "[y]") {
+		t.Fatalf("changed key view:\n%s", v)
+	}
+	m = press(t, m, "y")
+	if _, err := os.Stat(fake.KnownHosts); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("y must not trust a changed key")
+	}
+}
+
+func TestHostKeyModalFitsAndNeverTruncatesTheFingerprint(t *testing.T) {
+	for _, lang := range []string{"en", "ko"} {
+		for _, mode := range []sshtest.Mode{sshtest.Unknown, sshtest.Changed} {
+			m, _ := hostKeyModel(t, mode, lang)
+			next, cmd := press(t, m, "s").Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+			m = runCmd(t, next.(Model), cmd)
+			for _, size := range [][2]int{{160, 48}, {120, 36}, {96, 24}, {80, 24}, {60, 18}, {50, 14}} {
+				mm := resize(m, size[0], size[1])
+				assertFits(t, mm, lang+" host key "+string(mode))
+				if mode != sshtest.Unknown || size[1] < 24 {
+					continue
+				}
+				// 테두리와 줄바꿈을 걷어 내면 지문이 온전히 남아 있어야 한다.
+				var flat strings.Builder
+				for _, l := range strings.Split(plain(mm.modalView()), "\n") {
+					flat.WriteString(strings.TrimSpace(strings.Trim(strings.TrimSpace(l), "│")))
+				}
+				if !strings.Contains(strings.ReplaceAll(flat.String(), " ", ""), strings.ReplaceAll(sshtest.Fingerprint, " ", "")) {
+					t.Errorf("%s %dx%d: fingerprint truncated:\n%s", lang, size[0], size[1], plain(mm.modalView()))
+				}
+			}
+		}
 	}
 }

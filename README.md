@@ -114,7 +114,7 @@ routebox service uninstall   # stop and remove from login
 - The service runs `routebox --no-tui --config <absolute path>` with the config path and `PATH` of the shell you ran `install` from. If you use `--config` or `ROUTEBOX_CONFIG`, pass the same one to `install` and to `routebox` when you attach. Run `install` again after moving the binary or the config.
 - Logs: macOS writes `~/Library/Logs/RouteBox/routebox.log` (rotated at 10 MB, one `.1` backup kept); Linux uses the journal (`journalctl --user -u routebox`).
 - If RouteBox is already running in a terminal when you install, the service keeps retrying and takes over within about 10 seconds after you quit it. Each retry adds an `another RouteBox instance is already running` line to `~/Library/Logs/RouteBox/stderr.log` on macOS, so don't leave a terminal instance running alongside the service.
-- ssh runs without a terminal, so it cannot ask for a passphrase or confirm a host key. Use keys that are in an agent (macOS: `UseKeychain yes` + `AddKeysToAgent yes`, or an `IdentityAgent` such as 1Password) and connect once with `ssh <host>` beforehand. On Linux, `systemd --user` services do not inherit `SSH_AUTH_SOCK` from your shell; see [Troubleshooting](#14-troubleshooting).
+- ssh runs without a terminal, so it cannot ask for a passphrase or confirm a host key. Use keys that are in an agent (macOS: `UseKeychain yes` + `AddKeysToAgent yes`, or an `IdentityAgent` such as 1Password) and trust each server's host key once (`t` in the upstream manager or `routebox ssh trust <upstream>`, see [Host keys](#host-keys)). On Linux, `systemd --user` services do not inherit `SSH_AUTH_SOCK` from your shell; see [Troubleshooting](#14-troubleshooting).
 - A process manager or login item of your own works too: run `routebox --no-tui` (optionally with `--log-file`).
 
 ### Updating
@@ -166,7 +166,7 @@ Firefox sends HTTPS as `CONNECT host:443`, so RouteBox routes on the hostname al
 
 RouteBox starts and supervises one `ssh -N -D` process per managed upstream.
 
-On first launch the TUI asks for your first upstream. Afterwards press **`s`** to open the upstream manager (`a` add, `e` edit, `d` delete, `r` restart).
+On first launch the TUI asks for your first upstream. Afterwards press **`s`** to open the upstream manager (`a` add, `e` edit, `d` delete, `r` restart, `t` check the host key).
 
 | Field | Meaning |
 |---|---|
@@ -192,6 +192,16 @@ ssh -N -D 127.0.0.1:1080 \
 - ssh opens the `-D` port only after authentication, so an upstream counts as connected once a SOCKS greeting succeeds.
 - ssh's stderr shows up in TUI toasts, the upstream manager and `routebox ssh status`.
 - On exit, every ssh child gets SIGTERM (SIGKILL after 3 s) and is reaped — no zombies.
+
+### Host keys
+
+ssh runs without a terminal, so it cannot ask "Are you sure you want to continue connecting?" for a server it has never seen, and the tunnel fails with `Host key verification failed`. RouteBox then shows a toast, and in the upstream manager (`s`) **`t`** checks the host key:
+
+1. RouteBox connects with ssh itself (following `~/.ssh/config`: `Port`, `HostKeyAlias`, `HashKnownHosts`, …) with authentication disabled, and shows the key type and `SHA256:` fingerprint the server presented.
+2. Compare it with the fingerprint on the server, e.g. `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`.
+3. `y` appends exactly that key, as ssh itself wrote it, to your `known_hosts` (the first `UserKnownHostsFile`) and reconnects. `n` saves nothing.
+
+`routebox ssh trust <upstream>` does the same from the command line. If the key has **changed** since it was saved, RouteBox refuses and tells you to remove the old key with `ssh-keygen -R <host>` after confirming the new one, because a changed key is what a man-in-the-middle looks like. With `ProxyJump`, the jump host's key must already be trusted. Running `ssh <host>` once in a terminal also works.
 
 Example `~/.ssh/config`:
 
@@ -271,7 +281,7 @@ routebox --preset <name>        # add before starting
 | `e` / `enter` | Edit the selected route (`enter` on "+ Add Route" adds) |
 | `d` | Delete the selected route (confirm with `y`) |
 | `p` | Add a preset |
-| `s` | Upstream manager (`a` add, `e` edit, `d` delete, `r` restart) |
+| `s` | Upstream manager (`a` add, `e` edit, `d` delete, `r` restart, `t` check host key) |
 | `r` | Restart all upstreams |
 | `l` | Show/hide the log (on narrow terminals: switch Routes ↔ log) |
 | `L` | Switch language (English ↔ 한국어), saved to the config |
@@ -310,6 +320,7 @@ routebox preset add <name> --via seoul
 routebox status                            # --json; exit code 1 when not running
 routebox ssh status [upstream]             # state + recent ssh stderr
 routebox ssh restart [upstream]
+routebox ssh trust <upstream>              # show the host key fingerprint, save after you confirm
 
 routebox service install|uninstall         # run at login (launchd / systemd --user)
 routebox service start|stop|restart|status
@@ -358,9 +369,9 @@ Override with `--config <path>` or `ROUTEBOX_CONFIG`.
 | Symptom | Cause and fix |
 |---|---|
 | Firefox: "The proxy server is refusing connections" on every site | RouteBox is not running. Start it, or install the [background service](#run-in-the-background). |
-| Tunnel works from the TUI but fails as a service | The service has no terminal: a passphrase-protected key not in an agent, or an unknown host key, cannot be answered. See [Run in the background](#run-in-the-background) and check the service log. |
+| Tunnel works from the TUI but fails as a service | The service has no terminal: a passphrase-protected key not in an agent, or an unknown host key, cannot be answered. Trust the host key with `t` / `routebox ssh trust`; see [Run in the background](#run-in-the-background) and check the service log. |
 | Service on Linux: `Permission denied (publickey)` | `systemd --user` does not see your shell's `SSH_AUTH_SOCK`. Set `IdentityAgent` in `~/.ssh/config`, or run `systemctl --user import-environment SSH_AUTH_SOCK` in your login session and `routebox service restart`. |
-| `Host key verification failed` | First connection to this server. Run `ssh <host>` once in a terminal to verify and store the key. RouteBox never accepts host keys automatically. |
+| `Host key verification failed` | The server's host key is not in `known_hosts` yet. Press `s`, select the upstream, press `t`, compare the fingerprint and press `y` (or `routebox ssh trust <upstream>`). See [Host keys](#host-keys). |
 | `Permission denied (publickey)` | Key not authorised on the server, or a passphrase-protected key is not in the agent. `ssh-add ~/.ssh/id_ed25519`, then `r`. |
 | `Permission denied (publickey)` although the key is in `ssh-agent` | `~/.ssh/config` sets `IdentityAgent` (e.g. 1Password), so ssh asks that agent instead of `SSH_AUTH_SOCK`. Add the key to that agent, or set `IdentityAgent` for this host. `ssh -v <host>` shows which agent and keys are tried. |
 | `Could not resolve hostname` | Typo in the host or missing `~/.ssh/config` entry. Check with `ssh -G <host>`. |
@@ -388,6 +399,7 @@ Status badge:
 - TLS is never decrypted; no certificates are created or installed; SNI is untouched.
 - Logs, the TUI and events record **`host:port` only** — never URL paths, query strings or headers (Authorization, Proxy-Authorization, Cookie). Plain-HTTP forwarding drops hop-by-hop headers such as `Proxy-Authorization`.
 - Private keys are never stored, only their path. There is no password-auth UI.
+- Host keys are never accepted automatically: RouteBox shows the fingerprint and saves the key only after you confirm it, and never offers to trust a key that has changed.
 - ssh hosts and users starting with `-` are rejected, and `--` precedes the host to prevent option injection.
 - The config file (`0600`) and control socket (`0600` in a `0700` directory) are private to your account. Anyone who can use the control socket controls RouteBox, which is why it is not exposed over TCP.
 - The background service on macOS logs every connection's `host:port` to `~/Library/Logs/RouteBox/routebox.log` (`0600`, rotated at 10 MB with one backup). `routebox service uninstall` leaves the log in place; delete the folder yourself if you stop using the service.

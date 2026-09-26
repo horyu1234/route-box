@@ -114,7 +114,7 @@ routebox service uninstall   # 멈추고 로그인 항목에서 제거
 - 서비스는 `install` 을 실행한 셸의 설정 경로와 `PATH` 로 `routebox --no-tui --config <절대 경로>` 를 실행합니다. `--config` 나 `ROUTEBOX_CONFIG` 를 쓴다면 `install` 과, 붙을 때의 `routebox` 에 같은 값을 넘기세요. 바이너리나 설정을 옮겼으면 `install` 을 다시 실행합니다.
 - 로그: macOS 는 `~/Library/Logs/RouteBox/routebox.log` (10 MB 에서 교체, `.1` 백업 하나 유지), Linux 는 journal(`journalctl --user -u routebox`)을 씁니다.
 - 설치할 때 터미널에서 RouteBox 가 이미 돌고 있으면, 서비스는 계속 재시도하다가, 그 인스턴스를 종료하면 10초 안팎에 이어받습니다. macOS 에서는 재시도마다 `~/Library/Logs/RouteBox/stderr.log` 에 `another RouteBox instance is already running` 줄이 쌓이므로, 서비스와 터미널 인스턴스를 함께 켜 두지 마세요.
-- ssh 가 터미널 없이 실행되므로 passphrase 를 묻거나 호스트 키를 확인받을 수 없습니다. agent 에 들어 있는 키를 쓰고(macOS: `UseKeychain yes` + `AddKeysToAgent yes`, 또는 1Password 같은 `IdentityAgent`), 미리 `ssh <호스트>` 로 한 번 접속해 두세요. Linux 의 `systemd --user` 서비스는 셸의 `SSH_AUTH_SOCK` 을 물려받지 않습니다. [문제 해결](#14-문제-해결)을 보세요.
+- ssh 가 터미널 없이 실행되므로 passphrase 를 묻거나 호스트 키를 확인받을 수 없습니다. agent 에 들어 있는 키를 쓰고(macOS: `UseKeychain yes` + `AddKeysToAgent yes`, 또는 1Password 같은 `IdentityAgent`), 서버마다 호스트 키를 한 번 신뢰해 두세요(업스트림 관리 창의 `t` 또는 `routebox ssh trust <업스트림>`, [호스트 키](#호스트-키) 참고). Linux 의 `systemd --user` 서비스는 셸의 `SSH_AUTH_SOCK` 을 물려받지 않습니다. [문제 해결](#14-문제-해결)을 보세요.
 - 직접 쓰는 프로세스 관리자나 로그인 항목으로 띄워도 됩니다. `routebox --no-tui` (필요하면 `--log-file` 도)를 실행하면 됩니다.
 
 ### 업데이트
@@ -166,7 +166,7 @@ Firefox 는 HTTPS 를 `CONNECT host:443` 으로 보내므로 RouteBox 는 호스
 
 managed 업스트림마다 RouteBox 가 `ssh -N -D` 프로세스를 하나씩 띄우고 감시합니다.
 
-처음 실행하면 TUI 가 첫 업스트림을 물어봅니다. 그다음부터는 **`s`** 로 업스트림 관리 창을 엽니다(`a` 추가, `e` 편집, `d` 삭제, `r` 재시작).
+처음 실행하면 TUI 가 첫 업스트림을 물어봅니다. 그다음부터는 **`s`** 로 업스트림 관리 창을 엽니다(`a` 추가, `e` 편집, `d` 삭제, `r` 재시작, `t` 호스트 키 확인).
 
 | 필드 | 의미 |
 |---|---|
@@ -192,6 +192,16 @@ ssh -N -D 127.0.0.1:1080 \
 - ssh 는 인증이 끝난 뒤에야 `-D` 포트를 엽니다. 그래서 SOCKS 인사가 성공해야 연결됨으로 봅니다.
 - ssh 의 stderr 는 TUI 토스트, 업스트림 관리 창, `routebox ssh status` 에 표시됩니다.
 - 종료할 때 모든 ssh 자식에 SIGTERM(3초 뒤 SIGKILL)을 보내고 회수합니다. 좀비가 남지 않습니다.
+
+### 호스트 키
+
+ssh 가 터미널 없이 실행되므로 처음 보는 서버에 대해 "Are you sure you want to continue connecting?" 을 물을 수 없고, 터널은 `Host key verification failed` 로 실패합니다. 이때 RouteBox 가 토스트로 알려 주고, 업스트림 관리 창(`s`)에서 **`t`** 로 호스트 키를 확인할 수 있습니다.
+
+1. RouteBox 가 ssh 로(`~/.ssh/config` 의 `Port`, `HostKeyAlias`, `HashKnownHosts` 등을 그대로 따라) 인증 없이 접속해, 서버가 보낸 키 종류와 `SHA256:` 지문을 보여 줍니다.
+2. 서버에서 확인한 지문과 비교합니다. 예: `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`.
+3. `y` 를 누르면 ssh 가 직접 쓴 그 키 줄을 그대로 `known_hosts`(첫 번째 `UserKnownHostsFile`)에 추가하고 다시 연결합니다. `n` 은 아무것도 저장하지 않습니다.
+
+명령줄에서는 `routebox ssh trust <업스트림>` 으로 같은 일을 합니다. 저장된 키와 **달라진** 키는 중간자 공격의 모습과 같으므로 신뢰를 제안하지 않고, 새 키를 확인한 뒤 `ssh-keygen -R <호스트>` 로 예전 키를 지우라고 안내합니다. `ProxyJump` 를 쓰면 점프 호스트의 키는 미리 신뢰돼 있어야 합니다. 터미널에서 `ssh <호스트>` 로 한 번 접속해도 됩니다.
 
 `~/.ssh/config` 예:
 
@@ -271,7 +281,7 @@ routebox --preset <이름>        # 시작하면서 추가
 | `e` / `enter` | 선택한 라우트 편집 (`+ 라우트 추가` 행에서는 추가) |
 | `d` | 선택한 라우트 삭제 (`y` 로 확인) |
 | `p` | preset 추가 |
-| `s` | 업스트림 관리 (`a` 추가, `e` 편집, `d` 삭제, `r` 재시작) |
+| `s` | 업스트림 관리 (`a` 추가, `e` 편집, `d` 삭제, `r` 재시작, `t` 호스트 키 확인) |
 | `r` | 모든 업스트림 재시작 |
 | `l` | 로그 표시/숨김 (좁은 화면에서는 라우트 ↔ 로그 전환) |
 | `L` | 언어 전환 (English ↔ 한국어), 설정에 저장 |
@@ -310,6 +320,7 @@ routebox preset add <이름> --via seoul
 routebox status                            # --json, 실행 중이 아니면 종료 코드 1
 routebox ssh status [업스트림]             # 상태 + 최근 ssh stderr
 routebox ssh restart [업스트림]
+routebox ssh trust <업스트림>              # 호스트 키 지문을 보여 주고, 확인하면 저장
 
 routebox service install|uninstall         # 로그인할 때 실행 (launchd / systemd --user)
 routebox service start|stop|restart|status
@@ -358,9 +369,9 @@ CLI 와 TUI 는 같은 코어(`internal/core`)를 씁니다. RouteBox 가 실행
 | 증상 | 원인과 조치 |
 |---|---|
 | Firefox: 모든 사이트에서 "프록시 서버가 연결을 거부했습니다" | RouteBox 가 실행 중이 아닙니다. 실행하거나 [백그라운드 서비스](#백그라운드-실행)를 설치하세요. |
-| TUI 에서는 되는데 서비스로는 터널이 실패 | 서비스에는 터미널이 없어서 agent 에 없는 passphrase 키나 처음 보는 호스트 키에 답할 수 없습니다. [백그라운드 실행](#백그라운드-실행)을 보고 서비스 로그를 확인하세요. |
+| TUI 에서는 되는데 서비스로는 터널이 실패 | 서비스에는 터미널이 없어서 agent 에 없는 passphrase 키나 처음 보는 호스트 키에 답할 수 없습니다. 호스트 키는 `t` / `routebox ssh trust` 로 신뢰하세요. [백그라운드 실행](#백그라운드-실행)을 보고 서비스 로그를 확인하세요. |
 | Linux 서비스에서 `Permission denied (publickey)` | `systemd --user` 는 셸의 `SSH_AUTH_SOCK` 을 모릅니다. `~/.ssh/config` 에 `IdentityAgent` 를 지정하거나, 로그인 세션에서 `systemctl --user import-environment SSH_AUTH_SOCK` 을 실행한 뒤 `routebox service restart`. |
-| `Host key verification failed` | 처음 접속하는 서버입니다. 터미널에서 `ssh <호스트>` 를 한 번 실행해 키를 확인하고 저장하세요. RouteBox 는 호스트 키를 자동으로 수락하지 않습니다. |
+| `Host key verification failed` | 서버의 호스트 키가 아직 `known_hosts` 에 없습니다. `s` 에서 업스트림을 골라 `t` 를 누르고, 지문을 비교한 뒤 `y` 를 누르세요(또는 `routebox ssh trust <업스트림>`). [호스트 키](#호스트-키) 참고. |
 | `Permission denied (publickey)` | 키가 서버에 등록되지 않았거나, 비밀번호 걸린 키가 agent 에 없습니다. `ssh-add ~/.ssh/id_ed25519` 후 `r`. |
 | 키를 `ssh-agent` 에 올렸는데도 `Permission denied (publickey)` | `~/.ssh/config` 에 `IdentityAgent`(예: 1Password)가 있으면 ssh 는 `SSH_AUTH_SOCK` 대신 그 agent 에 묻습니다. 그 agent 에 키를 넣거나 이 호스트에 맞는 `IdentityAgent` 를 지정하세요. 어떤 agent 와 키를 시도하는지는 `ssh -v <호스트>` 로 볼 수 있습니다. |
 | `Could not resolve hostname` | 호스트 오타나 `~/.ssh/config` 누락입니다. `ssh -G <호스트>` 로 확인하세요. |
@@ -388,6 +399,7 @@ CLI 와 TUI 는 같은 코어(`internal/core`)를 씁니다. RouteBox 가 실행
 - TLS 를 복호화하지 않고, 인증서를 만들거나 설치하지 않으며, SNI 도 건드리지 않습니다.
 - 로그·TUI·이벤트에는 **`host:port` 만** 남깁니다. URL 경로, query string, 헤더(Authorization, Proxy-Authorization, Cookie)는 기록하지 않습니다. 일반 HTTP 를 전달할 때 `Proxy-Authorization` 같은 hop-by-hop 헤더는 넘기지 않습니다.
 - 개인 키는 저장하지 않고 경로만 저장합니다. 비밀번호 인증 UI 는 없습니다.
+- 호스트 키는 절대 자동으로 수락하지 않습니다. 지문을 보여 주고 사용자가 확인해야만 저장하며, 달라진 키는 신뢰를 제안하지 않습니다.
 - `-` 로 시작하는 ssh 호스트·사용자는 거부하고, 호스트 앞에 `--` 를 넣어 옵션 주입을 막습니다.
 - 설정 파일(`0600`)과 제어 소켓(`0700` 디렉터리 안의 `0600`)은 본인 계정만 접근할 수 있습니다. 제어 소켓을 쓸 수 있으면 RouteBox 를 조종할 수 있으므로 TCP 로는 열지 않습니다.
 - macOS 백그라운드 서비스는 모든 연결의 `host:port` 를 `~/Library/Logs/RouteBox/routebox.log` (`0600`, 10 MB 에서 교체, 백업 하나)에 기록합니다. `routebox service uninstall` 은 로그를 지우지 않으므로, 서비스를 그만 쓰면 폴더를 직접 지우세요.

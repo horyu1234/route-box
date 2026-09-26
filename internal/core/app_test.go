@@ -22,6 +22,7 @@ import (
 	"github.com/horyu1234/route-box/internal/router"
 	"github.com/horyu1234/route-box/internal/socks/sockstest"
 	"github.com/horyu1234/route-box/internal/ssh"
+	"github.com/horyu1234/route-box/internal/ssh/sshtest"
 )
 
 // 테스트 바이너리가 가짜 ssh 역할도 한다: -D 주소에서 SOCKS 인사만 받고 SIGTERM 까지 기다린다.
@@ -542,4 +543,37 @@ func TestMigratedConfigIsAnnounced(t *testing.T) {
 		n, ok := e.(events.Notice)
 		return ok && n.Message == MigratedNotice
 	})
+}
+
+func TestHostKeyTrustRequiresTheScannedFingerprint(t *testing.T) {
+	fake := sshtest.New(t, sshtest.Unknown)
+	cfg := config.Default()
+	cfg.Upstreams = []config.Upstream{
+		{Name: "seoul", Mode: config.SSHManaged, Host: "fake.example.net", Socks: "127.0.0.1:1080"},
+		{Name: "lab", Mode: config.SSHExternal, Socks: "127.0.0.1:9050"},
+	}
+	app := New(Options{ConfigPath: filepath.Join(t.TempDir(), "config.json"), Config: cfg, SSHBin: fake.Bin})
+
+	if _, err := app.ScanHostKey(context.Background(), "lab"); !errors.Is(err, ErrNotManaged) {
+		t.Fatalf("external upstream: %v", err)
+	}
+	if err := app.TrustHostKey("seoul", sshtest.Fingerprint); !errors.Is(err, ErrNoPendingKey) {
+		t.Fatalf("trust before scan: %v", err)
+	}
+	k, err := app.ScanHostKey(context.Background(), "seoul")
+	if err != nil || k.Fingerprint() != sshtest.Fingerprint {
+		t.Fatalf("scan: %+v %v", k, err)
+	}
+	if err := app.TrustHostKey("seoul", "ssh-ed25519 SHA256:somethingelse"); !errors.Is(err, ErrNoPendingKey) {
+		t.Fatalf("trust with another fingerprint: %v", err)
+	}
+	if err := app.TrustHostKey("seoul", sshtest.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(fake.KnownHosts); !strings.Contains(string(b), sshtest.Key) {
+		t.Fatalf("known_hosts = %q", b)
+	}
+	if err := app.TrustHostKey("seoul", sshtest.Fingerprint); !errors.Is(err, ErrNoPendingKey) {
+		t.Fatal("a scanned key must be trusted at most once")
+	}
 }

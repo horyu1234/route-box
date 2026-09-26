@@ -9,6 +9,7 @@ import (
 	"github.com/horyu1234/route-box/internal/core"
 	"github.com/horyu1234/route-box/internal/events"
 	"github.com/horyu1234/route-box/internal/router"
+	"github.com/horyu1234/route-box/internal/ssh"
 )
 
 const (
@@ -161,6 +162,18 @@ func (r *Remote) RemoveUpstream(name string) error {
 
 func (r *Remote) RestartUpstream(name string) error {
 	_, err := after(r, func(ctx context.Context) (struct{}, error) { return struct{}{}, r.c.RestartSSH(ctx, name) })
+	return err
+}
+
+// ScanHostKey 는 ssh 연결을 기다려야 하므로 remoteTimeout 이 아니라 ctx 를 따른다.
+func (r *Remote) ScanHostKey(ctx context.Context, name string) (ssh.HostKey, error) {
+	return r.c.ScanHostKey(ctx, name)
+}
+
+func (r *Remote) TrustHostKey(name, fingerprint string) error {
+	_, err := after(r, func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, r.c.TrustHostKey(ctx, name, fingerprint)
+	})
 	return err
 }
 

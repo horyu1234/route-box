@@ -36,6 +36,9 @@ type Backend interface {
 	UpdateUpstream(oldName string, u config.Upstream) (config.Upstream, error)
 	RemoveUpstream(name string) error
 	RestartUpstream(name string) error
+	// ScanHostKey 는 ssh 연결을 하므로 느리다: Update 밖의 tea.Cmd 에서만 부른다.
+	ScanHostKey(ctx context.Context, name string) (ssh.HostKey, error)
+	TrustHostKey(name, fingerprint string) error
 	SetLanguage(lang string) error
 }
 
@@ -73,6 +76,7 @@ const (
 	modalOnboard
 	modalConfigError
 	modalFatal
+	modalHostKey
 )
 
 type focusArea int
@@ -100,6 +104,14 @@ type onboardState struct {
 	ok      bool
 	detail  string
 	doneAt  time.Time
+}
+
+// hostKeyState 는 host key 확인 모달의 상태다.
+type hostKeyState struct {
+	name     string
+	scanning bool
+	key      ssh.HostKey
+	err      error
 }
 
 type Model struct {
@@ -133,6 +145,7 @@ type Model struct {
 	viaPicker    components.Chooser
 	pendingPre   string
 	onboard      onboardState
+	hostKey      hostKeyState
 
 	started   bool
 	quitting  bool
@@ -146,8 +159,13 @@ type (
 	tickMsg         time.Time
 	eventMsg        struct{ e events.Event }
 	eventsClosedMsg struct{}
-	shutdownMsg     struct{}
-	forceQuitMsg    struct{}
+	hostKeyMsg      struct {
+		name string
+		key  ssh.HostKey
+		err  error
+	}
+	shutdownMsg  struct{}
+	forceQuitMsg struct{}
 )
 
 const tickInterval = 250 * time.Millisecond

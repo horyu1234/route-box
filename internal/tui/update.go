@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"time"
@@ -41,6 +42,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		m.handleEvent(msg.e)
 		return m, waitEvent(m.events)
+	case hostKeyMsg:
+		// 기다리는 사이 모달을 닫았거나 다른 업스트림을 골랐으면 버린다.
+		if m.modal == modalHostKey && m.hostKey.scanning && m.hostKey.name == msg.name {
+			m.hostKey.scanning = false
+			m.hostKey.key, m.hostKey.err = msg.key, msg.err
+		}
+		return m, nil
 	case eventsClosedMsg:
 		m.stopped = true
 		if m.quitting {
@@ -114,6 +122,10 @@ func (m *Model) onSSH(name string, st ssh.Status) {
 		(prev.State != st.State || prev.Err != st.Err):
 		if onboarding {
 			m.finishOnboarding(false, st.Err)
+			return
+		}
+		if ssh.IsHostKeyFailure(st.Err) {
+			m.toast(components.ToastError, "%s: unknown host key — press s, then t to check it", name)
 			return
 		}
 		m.toast(components.ToastError, "%s: SSH tunnel failed: %s", name, st.Err)
@@ -489,6 +501,42 @@ func (m Model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if key == "q" || key == "esc" || key == "enter" {
 			return m, tea.Quit
 		}
+	case modalHostKey:
+		return m.updateHostKey(key)
+	}
+	return m, nil
+}
+
+// scanHostKey 는 ssh 로 서버의 host key 를 받아 온다. 연결을 두 번 하므로
+// Update 를 막지 않도록 tea.Cmd 로 돈다.
+func (m *Model) scanHostKey(name string) tea.Cmd {
+	m.hostKey = hostKeyState{name: name, scanning: true}
+	m.modal = modalHostKey
+	app := m.app
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		k, err := app.ScanHostKey(ctx, name)
+		return hostKeyMsg{name: name, key: k, err: err}
+	}
+}
+
+func (m Model) updateHostKey(key string) (tea.Model, tea.Cmd) {
+	h := m.hostKey
+	switch {
+	case key == "esc" || key == "q" || key == "n" || key == "N":
+		m.modal = modalUpstreams
+	case h.scanning:
+	case h.err == nil && (key == "y" || key == "Y"):
+		if err := m.app.TrustHostKey(h.name, h.key.Fingerprint()); err != nil {
+			m.toast(components.ToastError, "Could not save the host key: %v", err)
+		} else {
+			m.toast(components.ToastSuccess, "Host key saved — reconnecting %s…", h.name)
+		}
+		m.modal = modalUpstreams
+		m.refresh()
+	case h.err != nil && key == "enter":
+		m.modal = modalUpstreams
 	}
 	return m, nil
 }
@@ -543,6 +591,10 @@ func (m Model) updateUpstreams(key string) (tea.Model, tea.Cmd) {
 	case "r":
 		if u, ok := selected(); ok {
 			m.restartUpstream(u.Name)
+		}
+	case "t":
+		if u, ok := selected(); ok && u.Mode == config.SSHManaged {
+			return m, m.scanHostKey(u.Name)
 		}
 	}
 	return m, nil

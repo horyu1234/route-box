@@ -90,6 +90,10 @@ var sentinels = []struct {
 	{"unknown_mode", router.ErrUnknownMode, http.StatusBadRequest},
 	{"no_upstream", core.ErrNoUpstream, http.StatusBadRequest},
 	{"not_running", core.ErrNotRunning, http.StatusServiceUnavailable},
+	{"not_managed", core.ErrNotManaged, http.StatusBadRequest},
+	{"no_pending_key", core.ErrNoPendingKey, http.StatusConflict},
+	{"host_key_changed", ssh.ErrHostKeyChanged, http.StatusConflict},
+	{"host_key_known", ssh.ErrHostKeyKnown, http.StatusConflict},
 }
 
 type remoteError struct {
@@ -104,6 +108,11 @@ type updateRouteRequest struct {
 	Old    string `json:"old"`
 	Domain string `json:"domain"`
 	Via    string `json:"via"`
+}
+
+type trustRequest struct {
+	Name        string `json:"name"`
+	Fingerprint string `json:"fingerprint"`
 }
 
 type languageRequest struct {
@@ -259,6 +268,17 @@ func Serve(ctx context.Context, ln net.Listener, app *core.App) error {
 			return 0, nil, err
 		}
 		return http.StatusNoContent, nil, app.SetLanguage(req.Language)
+	})
+	handle("POST /v1/ssh/hostkey", func(r *http.Request) (int, any, error) {
+		k, err := app.ScanHostKey(r.Context(), r.URL.Query().Get("name"))
+		return http.StatusOK, k, err
+	})
+	handle("POST /v1/ssh/trust", func(r *http.Request) (int, any, error) {
+		var req trustRequest
+		if err := decode(r, &req); err != nil {
+			return 0, nil, err
+		}
+		return http.StatusNoContent, nil, app.TrustHostKey(req.Name, req.Fingerprint)
 	})
 	mux.HandleFunc("GET /v1/events", func(w http.ResponseWriter, r *http.Request) {
 		streamEvents(w, r, app)
@@ -493,6 +513,26 @@ func (c *Client) UpdateUpstream(ctx context.Context, oldName string, u config.Up
 
 func (c *Client) SetLanguage(ctx context.Context, lang string) error {
 	return c.do(ctx, http.MethodPut, "/v1/language", languageRequest{Language: lang}, nil)
+}
+
+// ScanHostKey 는 실행 중인 인스턴스가 업스트림의 host key 를 받아 오게 한다.
+// ssh 연결을 두 번 하므로 일반 요청 타임아웃 대신 ctx 로 기다린다.
+func (c *Client) ScanHostKey(ctx context.Context, name string) (ssh.HostKey, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://routebox/v1/ssh/hostkey?name="+url.QueryEscape(name), nil)
+	if err != nil {
+		return ssh.HostKey{}, err
+	}
+	resp, err := send(c.stream, req)
+	if err != nil {
+		return ssh.HostKey{}, err
+	}
+	defer resp.Body.Close()
+	var k ssh.HostKey
+	return k, json.NewDecoder(resp.Body).Decode(&k)
+}
+
+func (c *Client) TrustHostKey(ctx context.Context, name, fingerprint string) error {
+	return c.do(ctx, http.MethodPost, "/v1/ssh/trust", trustRequest{Name: name, Fingerprint: fingerprint}, nil)
 }
 
 // Events 는 실행 중인 인스턴스의 이벤트 스트림을 연다. 채널은 ctx 가 취소되거나

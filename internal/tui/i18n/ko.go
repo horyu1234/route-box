@@ -188,4 +188,20 @@ var ko = map[string]string{
 	"The file was left untouched. Continuing starts RouteBox with safe defaults and backs the broken file up before anything is saved.": "파일은 그대로 두었습니다. 계속하면 안전한 기본값으로 시작하며, 무엇이든 저장하기 전에 깨진 파일을 백업합니다.",
 	"Broken config backed up to %s": "깨진 설정을 %s 에 백업했습니다",
 	"Could not back up config: %v":  "설정을 백업하지 못했습니다: %v",
+
+	// host key 확인
+	"host key":               "호스트 키",
+	"trust":                  "신뢰",
+	"Host key of %s":         "%s 의 호스트 키",
+	"Fetching the host key…": "호스트 키를 받아 오는 중…",
+	"%s: unknown host key — press s, then t to check it":                                                         "%s: 확인되지 않은 호스트 키 — s 를 누른 뒤 t 로 확인하세요",
+	"Could not save the host key: %v":                                                                            "호스트 키를 저장하지 못했습니다: %v",
+	"Host key saved — reconnecting %s…":                                                                          "호스트 키를 저장했습니다 — %s 재연결 중…",
+	"%s has not been verified yet. The server presented:":                                                        "%s 는 아직 확인되지 않았습니다. 서버가 보낸 키:",
+	"Compare it with the fingerprint shown on the server, e.g. ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub": "서버에서 확인한 지문과 비교하세요. 예: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub",
+	"Trusting saves it to %s and reconnects.":                                                                    "신뢰하면 %s 에 저장하고 다시 연결합니다.",
+	"The host key has CHANGED since you last connected.":                                                         "마지막 접속 이후 호스트 키가 바뀌었습니다.",
+	"Someone may be intercepting the connection, so RouteBox will not offer to trust it. If the server was reinstalled, confirm the new key with its administrator, remove the old one and try again:": "누군가 연결을 가로채고 있을 수 있어 RouteBox 는 이 키를 신뢰하도록 제안하지 않습니다. 서버를 다시 설치한 경우라면 관리자에게 새 키를 확인한 뒤, 예전 키를 지우고 다시 시도하세요:",
+	"This host key is already trusted; the connection fails for another reason. Check the error in the upstream list or run ssh in a terminal.":                                                        "이 호스트 키는 이미 신뢰돼 있습니다. 연결은 다른 이유로 실패하고 있습니다. 업스트림 목록의 오류를 확인하거나 터미널에서 ssh 를 실행해 보세요.",
+	"The server's host key is not trusted yet. Press Enter, then t to check it.":                                                                                                                       "서버의 호스트 키가 아직 신뢰되지 않았습니다. Enter 를 누른 뒤 t 로 확인하세요.",
 }

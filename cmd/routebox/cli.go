@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -531,7 +532,65 @@ func newSSHCmd(configPath *string) *cobra.Command {
 			return nil
 		},
 	}
-	sshCmd.AddCommand(status, restart)
+	trust := &cobra.Command{
+		Use:   "trust <upstream>",
+		Short: "Show the server's host key fingerprint and save it to known_hosts after you confirm",
+		Long: `RouteBox runs ssh without a terminal, so ssh cannot ask whether to trust a
+server it has never seen and fails with "Host key verification failed".
+This fetches the key the server presents (following ~/.ssh/config), shows
+its fingerprint and, only after you confirm, appends it to your known_hosts.
+A key that CHANGED is never offered.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), 45*time.Second)
+			defer cancel()
+			s, err := openSession(ctx, *configPath)
+			if err != nil {
+				return err
+			}
+			name, out := args[0], cmd.OutOrStdout()
+			var k ssh.HostKey
+			if s.running() {
+				k, err = s.client.ScanHostKey(ctx, name)
+			} else {
+				k, err = s.app.ScanHostKey(ctx, name)
+			}
+			switch {
+			case errors.Is(err, ssh.ErrHostKeyChanged):
+				return fmt.Errorf("%w.\nSomeone may be intercepting the connection. If the server was reinstalled, confirm the new key\nwith its administrator, then remove the old one (ssh-keygen -R <host>) and try again", err)
+			case errors.Is(err, ssh.ErrHostKeyKnown):
+				fmt.Fprintf(out, "The host key of %s is already trusted; the connection fails for another reason (see `routebox ssh status %s`).\n", name, name)
+				return nil
+			case err != nil:
+				return err
+			}
+			fmt.Fprintf(out, "%s has not been verified yet. The server presented:\n\n", k.Host)
+			for _, f := range k.Fingerprints {
+				fmt.Fprintf(out, "  %s\n", f)
+			}
+			fmt.Fprintf(out, "\nCompare it with the fingerprint on the server, e.g. ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\n")
+			fmt.Fprintf(out, "Trust it and save it to %s? [y/N] ", k.KnownHosts)
+			answer, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+			if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
+				fmt.Fprintln(out, "Not saved.")
+				return errSilent
+			}
+			if s.running() {
+				err = s.client.TrustHostKey(ctx, name, k.Fingerprint())
+			} else {
+				err = s.app.TrustHostKey(name, k.Fingerprint())
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "✓ Saved to %s\n", k.KnownHosts)
+			if s.running() {
+				fmt.Fprintf(out, "✓ Reconnecting %s\n", name)
+			}
+			return nil
+		},
+	}
+	sshCmd.AddCommand(status, restart, trust)
 	return sshCmd
 }
 

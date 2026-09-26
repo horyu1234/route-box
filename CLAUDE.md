@@ -13,6 +13,7 @@
 
 ## Testing patterns
 - Fake ssh = the test binary itself via `ROUTEBOX_FAKE_SSH` in `TestMain` (ssh, core packages); fake SOCKS = `internal/socks/sockstest`
+- Host-key flows use `internal/ssh/sshtest` (a shell-script ssh with a temp `known_hosts`); never touch the real `~/.ssh`. A changed host key must never be offered for trust
 - Unix socket paths max ~104 bytes: use short dirs (`os.MkdirTemp("/tmp", …)`) for sockets in tests
 - TUI strings: every `T`/`t`/`toast` literal needs a `ko.go` entry (source-scan test); non-literal keys (badges, preset categories, `core.Warnings`, `core.MigratedNotice`) go in `TestIndirectKeysHaveKorean`
 - Layout test must fit every size in both en and ko (Korean is double-width)

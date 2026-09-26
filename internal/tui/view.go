@@ -1,11 +1,15 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/horyu1234/route-box/internal/config"
+	"github.com/horyu1234/route-box/internal/ssh"
 	"github.com/horyu1234/route-box/internal/tui/components"
 )
 
@@ -202,6 +206,8 @@ func (m Model) modalView() string {
 				m.t("The file was left untouched. Continuing starts RouteBox with safe defaults and backs the broken file up before anything is saved."))) +
 			"\n\n" + hint("d", "continue with defaults", "q", "quit")
 		return components.Box(body, w)
+	case modalHostKey:
+		return m.hostKeyView(w)
 	case modalFatal:
 		body := components.ModalTitle(m.t("RouteBox stopped")) + "\n\n" +
 			lipgloss.NewStyle().Width(w-8).Foreground(components.ColorRed).Render(m.fatal) + "\n\n" + hint("q", "quit")
@@ -234,13 +240,77 @@ func (m Model) upstreamsView(w int) string {
 			b.WriteString("    " + components.Red.Render(components.Truncate(u.SSH.Err, inner-4)) + "\n")
 		}
 	}
-	keys := []string{"a", "add", "e", "edit", "d", "delete", "r", "restart", "Esc", "close"}
+	keys := []string{"a", "add", "e", "edit", "d", "delete", "r", "restart"}
+	if m.upCursor < len(m.status.Upstreams) {
+		if u := m.status.Upstreams[m.upCursor]; u.Mode == config.SSHManaged {
+			keys = append(keys, "t", "host key")
+		}
+	}
+	keys = append(keys, "Esc", "close")
 	var parts []string
 	for i := 0; i < len(keys); i += 2 {
 		parts = append(parts, components.KeyHint(keys[i], m.t(keys[i+1])))
 	}
 	b.WriteString("\n" + strings.Join(parts, "  "))
 	return components.Box(b.String(), w)
+}
+
+// hostKeyView 는 서버의 host key 를 보여 주고 신뢰할지 묻는다. 지문은 잘리면
+// 비교할 수 없으므로 줄바꿈만 하고 절대 자르지 않는다.
+func (m Model) hostKeyView(w int) string {
+	h := m.hostKey
+	para := lipgloss.NewStyle().Width(w - 8)
+	hint := func(pairs ...string) string {
+		var parts []string
+		for i := 0; i+1 < len(pairs); i += 2 {
+			parts = append(parts, components.KeyHint(pairs[i], m.t(pairs[i+1])))
+		}
+		return strings.Join(parts, "  ")
+	}
+	title := components.ModalTitle(m.t("Host key of %s", h.name)) + "\n\n"
+	switch {
+	case h.scanning:
+		return components.Box(title+components.Accent.Render(components.SpinnerFrame(m.frame))+" "+
+			components.Text.Render(m.t("Fetching the host key…"))+"\n\n"+hint("Esc", "cancel"), w)
+	case errors.Is(h.err, ssh.ErrHostKeyChanged):
+		body := title + para.Foreground(components.ColorRed).Bold(true).Render(m.t("The host key has CHANGED since you last connected.")) + "\n\n" +
+			para.Render(components.Text.Render(m.t("Someone may be intercepting the connection, so RouteBox will not offer to trust it. If the server was reinstalled, confirm the new key with its administrator, remove the old one and try again:"))) + "\n\n" +
+			para.Render(components.Accent.Render("ssh-keygen -R "+m.hostKeyHost())) + "\n\n" + hint("Esc", "close")
+		return components.Box(body, w)
+	case errors.Is(h.err, ssh.ErrHostKeyKnown):
+		body := title + para.Render(components.Text.Render(m.t("This host key is already trusted; the connection fails for another reason. Check the error in the upstream list or run ssh in a terminal."))) +
+			"\n\n" + hint("Esc", "close")
+		return components.Box(body, w)
+	case h.err != nil:
+		body := title + para.Foreground(components.ColorRed).Render(h.err.Error()) + "\n\n" + hint("Esc", "close")
+		return components.Box(body, w)
+	}
+	var fps []string
+	for _, f := range h.key.Fingerprints {
+		fps = append(fps, para.Render(components.Accent.Bold(true).Render(f)))
+	}
+	body := title +
+		para.Render(components.Text.Render(m.t("%s has not been verified yet. The server presented:", h.key.Host))) + "\n\n" +
+		strings.Join(fps, "\n") + "\n\n" +
+		para.Render(components.Dim.Render(m.t("Compare it with the fingerprint shown on the server, e.g. ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"))) + "\n" +
+		para.Render(components.Dim.Render(m.t("Trusting saves it to %s and reconnects.", tildePath(h.key.KnownHosts)))) + "\n\n" +
+		hint("y", "trust", "n", "cancel")
+	return components.Box(body, w)
+}
+
+// tildePath 는 홈 디렉터리 아래 경로를 ~ 로 줄인다.
+func tildePath(p string) string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" && strings.HasPrefix(p, home+string(os.PathSeparator)) {
+		return "~" + strings.TrimPrefix(p, home)
+	}
+	return p
+}
+
+func (m Model) hostKeyHost() string {
+	if u, ok := m.app.Config().Upstream(m.hostKey.name); ok {
+		return u.Host
+	}
+	return m.hostKey.name
 }
 
 func (m Model) onboardView(w int) string {
@@ -262,9 +332,13 @@ func (m Model) onboardView(w int) string {
 		if !o.managed {
 			title = m.t("SOCKS server unreachable")
 		}
+		next := m.t("RouteBox keeps retrying in the background.")
+		if ssh.IsHostKeyFailure(o.detail) {
+			next = m.t("The server's host key is not trusted yet. Press Enter, then t to check it.")
+		}
 		body := brand + "\n\n" + components.Red.Render("✗ "+title) + "\n" +
 			lipgloss.NewStyle().Width(w-10).PaddingLeft(2).Foreground(components.ColorText).Render(o.detail) + "\n\n" +
-			components.Dim.Render(m.t("RouteBox keeps retrying in the background.")) + "\n\n" +
+			lipgloss.NewStyle().Width(w-8).Render(components.Dim.Render(next)) + "\n\n" +
 			components.KeyHint("Enter", m.t("open upstreams")) + "  " + components.KeyHint("Esc", m.t("close"))
 		return components.Box(body, w)
 	default:

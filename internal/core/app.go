@@ -27,6 +27,8 @@ var (
 	ErrNotRunning      = errors.New("RouteBox is not running")
 	ErrUpstreamInUse   = errors.New("upstream is still used by routes")
 	ErrUpstreamMissing = errors.New("upstream not found")
+	ErrNotManaged      = errors.New("upstream is not a managed SSH tunnel")
+	ErrNoPendingKey    = errors.New("no fetched host key to trust; fetch it again")
 )
 
 const connLogSize = 500
@@ -83,10 +85,13 @@ type App struct {
 	runCtx       context.Context
 	ups          map[string]*upstreamRT
 	health       map[string]Health
-	started      time.Time
-	proxyUp      bool
-	proxyErr     error
-	listenAddr   string
+	// pendingKeys 는 사용자가 확인 중인 host key 다. 신뢰는 여기 있는 키와
+	// 지문이 같을 때만 한다: 소켓 너머로 known_hosts 줄을 받지 않는다.
+	pendingKeys map[string]ssh.HostKey
+	started     time.Time
+	proxyUp     bool
+	proxyErr    error
+	listenAddr  string
 }
 
 func New(opts Options) *App {
@@ -112,6 +117,7 @@ func New(opts Options) *App {
 		overrideName:  cfg.DefaultUpstream(),
 		ups:           map[string]*upstreamRT{},
 		health:        map[string]Health{},
+		pendingKeys:   map[string]ssh.HostKey{},
 	}
 	a.transport = proxy.NewTransport(opts.Direct, nil)
 	a.syncUpstreams(cfg)
@@ -415,3 +421,53 @@ func (a *App) SSHLog(name string) []string {
 }
 
 func (a *App) RecentConnections() []events.ConnectionEvent { return a.conns.Snapshot() }
+
+// ScanHostKey 는 managed 업스트림 서버의 host key 를 받아 와 사용자가 확인하도록
+// 돌려준다. 이 프로세스(서비스로 돌 때는 데몬)의 ssh 환경에서 실행된다.
+func (a *App) ScanHostKey(ctx context.Context, name string) (ssh.HostKey, error) {
+	u, ok := a.effectiveUpstream(name)
+	if !ok {
+		return ssh.HostKey{}, errorf(ErrUpstreamMissing, name)
+	}
+	if u.Mode != config.SSHManaged || u.Host == "" {
+		return ssh.HostKey{}, errorf(ErrNotManaged, name)
+	}
+	k, err := ssh.ScanHostKey(ctx, a.opts.SSHBin, a.sshConfig(u).Spec)
+	if err != nil {
+		return ssh.HostKey{}, err
+	}
+	a.mu.Lock()
+	a.pendingKeys[name] = k
+	a.mu.Unlock()
+	return k, nil
+}
+
+// TrustHostKey 는 방금 ScanHostKey 로 보여 준 키(fingerprint 로 확인)를
+// known_hosts 에 저장하고, 실행 중이면 그 업스트림을 다시 연결한다.
+func (a *App) TrustHostKey(name, fingerprint string) error {
+	a.mu.Lock()
+	k, ok := a.pendingKeys[name]
+	if ok && k.Fingerprint() == fingerprint {
+		delete(a.pendingKeys, name)
+	}
+	a.mu.Unlock()
+	if !ok || k.Fingerprint() != fingerprint {
+		return ErrNoPendingKey
+	}
+	if err := ssh.TrustHostKey(k); err != nil {
+		return err
+	}
+	if a.running() {
+		return a.RestartUpstream(name)
+	}
+	return nil
+}
+
+func (a *App) effectiveUpstream(name string) (config.Upstream, bool) {
+	for _, u := range a.effectiveUpstreams(a.store.Get()) {
+		if u.Name == name {
+			return u, true
+		}
+	}
+	return config.Upstream{}, false
+}

@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/horyu1234/route-box/internal/events"
 	"github.com/horyu1234/route-box/internal/router"
 	"github.com/horyu1234/route-box/internal/ssh"
+	"github.com/horyu1234/route-box/internal/ssh/sshtest"
 )
 
 func TestEventCodecRoundTrip(t *testing.T) {
@@ -213,5 +216,45 @@ func waitFor(t *testing.T, ch <-chan events.Event, match func(events.Event) bool
 		case <-timeout:
 			t.Fatal("timed out waiting for event")
 		}
+	}
+}
+
+func TestHostKeyOverSocket(t *testing.T) {
+	for _, mode := range []sshtest.Mode{sshtest.Unknown, sshtest.Changed} {
+		fake := sshtest.New(t, mode)
+		dir := shortDir(t)
+		sock := filepath.Join(dir, "routebox.sock")
+		cfg := config.Default()
+		cfg.Upstreams = []config.Upstream{{Name: "seoul", Mode: config.SSHManaged, Host: "fake.example.net", Socks: "127.0.0.1:1080"}}
+		app := core.New(core.Options{ConfigPath: filepath.Join(dir, "config.json"), Config: cfg, SSHBin: fake.Bin})
+		ln, err := Listen(sock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() { _ = Serve(ctx, ln, app) }()
+		r, err := NewRemote(ctx, NewClient(sock))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		k, err := r.ScanHostKey(ctx, "seoul")
+		if mode == sshtest.Changed {
+			if !errors.Is(err, ssh.ErrHostKeyChanged) {
+				t.Fatalf("changed key over the socket: %v", err)
+			}
+		} else {
+			if err != nil || k.Fingerprint() != sshtest.Fingerprint || len(k.Lines) != 0 {
+				t.Fatalf("scan: %+v %v (known_hosts lines must stay in the daemon)", k, err)
+			}
+			if err := r.TrustHostKey("seoul", k.Fingerprint()); err != nil {
+				t.Fatal(err)
+			}
+			if b, _ := os.ReadFile(fake.KnownHosts); !strings.Contains(string(b), sshtest.Key) {
+				t.Fatalf("known_hosts = %q", b)
+			}
+		}
+		r.Close()
+		cancel()
 	}
 }
