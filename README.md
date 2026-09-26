@@ -109,7 +109,7 @@ This installs the prebuilt binary from the [latest release](https://github.com/h
 Each [release](https://github.com/horyu1234/route-box/releases/latest) has `routebox-vX.Y.Z-<os>-<arch>.tar.gz` for `darwin`/`linux` × `arm64`/`amd64`, plus `SHA256SUMS`. Unpack it and put `routebox` anywhere on your `PATH`:
 
 ```sh
-tar -xzf routebox-v0.3.1-darwin-arm64.tar.gz
+tar -xzf routebox-v0.3.2-darwin-arm64.tar.gz
 sudo install routebox /usr/local/bin/
 ```
 
@@ -120,7 +120,7 @@ If macOS blocks a file downloaded with a browser: `xattr -d com.apple.quarantine
 With Go (see `go.mod` for the required version), name the release tag:
 
 ```sh
-go install github.com/horyu1234/route-box/cmd/routebox@v0.3.1
+go install github.com/horyu1234/route-box/cmd/routebox@v0.3.2
 ```
 
 Always name the tag: `@latest` goes through the Go module proxy, which can keep serving the previous version for a while after a release.
@@ -161,14 +161,14 @@ routebox service uninstall   # stop and remove from login
    ```sh
    brew upgrade routebox
    # or, with Go:
-   go install github.com/horyu1234/route-box/cmd/routebox@v0.3.1
+   go install github.com/horyu1234/route-box/cmd/routebox@v0.3.2
    # or, from a source checkout:
    git pull && make build   # then copy bin/routebox over the old binary
    ```
 
 4. Start `routebox` again, or run `routebox service restart` for the background service (it keeps running the old binary until restarted). Routes and upstreams are kept in the config file, and configs from older versions are migrated when loaded.
 
-`routebox --version` shows the installed version: the release version for Homebrew and `go install` (e.g. `v0.3.1`), or `git describe` for `make build`.
+`routebox --version` shows the installed version: the release version for Homebrew and `go install` (e.g. `v0.3.2`), or `git describe` for `make build`.
 
 ## 5. Build
 
