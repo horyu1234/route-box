@@ -84,6 +84,12 @@ RouteBox 127.0.0.1:8080 ── 라우트 조회: example.com → via seoul
 
 ## 4. 설치
 
+[Homebrew](https://brew.sh)(macOS, Linux)가 있으면 [horyu1234/tap](https://github.com/horyu1234/homebrew-tap)에서 설치합니다. 태그된 릴리스를 소스에서 빌드하므로 Gatekeeper가 막을 서명 안 된 다운로드가 없습니다.
+
+```sh
+brew install horyu1234/tap/routebox
+```
+
 Go가 있으면(필요한 버전은 `go.mod` 참고) 최신 릴리스 태그를 지정해 설치합니다.
 
 ```sh
@@ -113,7 +119,7 @@ routebox service stop        # 다음 로그인까지 (또는 `routebox service 
 routebox service uninstall   # 멈추고 로그인 항목에서 제거
 ```
 
-- 서비스는 `install`을 실행한 셸의 설정 경로와 `PATH`로 `routebox --no-tui --config <절대 경로>`를 실행합니다. `--config`나 `ROUTEBOX_CONFIG`를 쓴다면 `install`과, 붙을 때의 `routebox`에 같은 값을 넘기세요. 바이너리나 설정을 옮겼으면 `install`을 다시 실행합니다.
+- 서비스는 `install`을 실행한 셸의 설정 경로와 `PATH`로 `routebox --no-tui --config <절대 경로>`를 실행합니다. `--config`나 `ROUTEBOX_CONFIG`를 쓴다면 `install`과, 붙을 때의 `routebox`에 같은 값을 넘기세요. 바이너리나 설정을 옮겼으면 `install`을 다시 실행합니다. Homebrew로 설치했다면 버전과 무관한 링크(`$(brew --prefix)/bin/routebox`)가 기록되므로, `brew upgrade` 뒤에는 `routebox service restart`만 하면 됩니다.
 - 로그: macOS는 `~/Library/Logs/RouteBox/routebox.log` (10 MB에서 교체, `.1` 백업 하나 유지), Linux는 journal(`journalctl --user -u routebox`)을 씁니다.
 - 설치할 때 터미널에서 RouteBox가 이미 돌고 있으면, 서비스는 계속 재시도하다가, 그 인스턴스를 종료하면 10초 안팎에 이어받습니다. macOS에서는 재시도마다 `~/Library/Logs/RouteBox/stderr.log`에 `another RouteBox instance is already running` 줄이 쌓이므로, 서비스와 터미널 인스턴스를 함께 켜 두지 마세요.
 - ssh가 터미널 없이 실행되므로 passphrase를 묻거나 호스트 키를 확인받을 수 없습니다. agent에 들어 있는 키를 쓰고(macOS: `UseKeychain yes` + `AddKeysToAgent yes`, 또는 1Password 같은 `IdentityAgent`), 서버마다 호스트 키를 한 번 신뢰해 두세요(업스트림 관리 창의 `t` 또는 `routebox ssh trust <업스트림>`, [호스트 키](#호스트-키) 참고). Linux의 `systemd --user` 서비스는 셸의 `SSH_AUTH_SOCK`을 물려받지 않습니다. [문제 해결](#14-문제-해결)을 보세요.
@@ -126,6 +132,8 @@ routebox service uninstall   # 멈추고 로그인 항목에서 제거
 3. 설치했던 방법 그대로 바이너리를 교체합니다. [태그 목록](https://github.com/horyu1234/route-box/tags)에서 새 태그를 확인해 지정합니다.
 
    ```sh
+   brew upgrade routebox
+   # 또는 Go로:
    go install github.com/horyu1234/route-box/cmd/routebox@v0.3.0
    # 또는 소스 체크아웃에서:
    git pull && make build   # 이후 bin/routebox로 기존 바이너리를 덮어씁니다
@@ -133,7 +141,7 @@ routebox service uninstall   # 멈추고 로그인 항목에서 제거
 
 4. `routebox`를 다시 실행합니다. 백그라운드 서비스라면 `routebox service restart`를 실행합니다(재시작 전까지는 예전 바이너리가 계속 돕니다). 라우트와 업스트림은 설정 파일에 그대로 남아 있고, 예전 버전의 설정은 읽을 때 새 형식으로 옮겨집니다.
 
-`routebox --version`은 설치된 버전을 보여 줍니다. `go install`이면 모듈 버전(예: `v0.3.0`), `make build`면 `git describe` 값입니다.
+`routebox --version`은 설치된 버전을 보여 줍니다. Homebrew와 `go install`이면 릴리스 버전(예: `v0.3.0`), `make build`면 `git describe` 값입니다.
 
 ## 5. 빌드
 

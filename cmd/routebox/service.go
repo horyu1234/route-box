@@ -170,13 +170,25 @@ func executablePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+	return serviceExe(exe)
+}
+
+// serviceExe 는 심볼릭 링크를 따라간 실제 경로를 쓰되, Homebrew 가 설치한
+// 바이너리는 링크 경로(예: /opt/homebrew/bin/routebox)를 그대로 쓴다.
+// Cellar 안의 실제 경로는 버전마다 달라서 brew upgrade 가 이전 버전을 지우면
+// 서비스가 없는 파일을 가리키게 되기 때문이다.
+func serviceExe(exe string) (string, error) {
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil && !inHomebrewCellar(resolved) {
 		exe = resolved
 	}
 	if strings.Contains(exe, string(filepath.Separator)+"go-build") {
 		return "", errors.New("refusing to install a temporary `go run` binary; build or install routebox first")
 	}
 	return exe, nil
+}
+
+func inHomebrewCellar(path string) bool {
+	return strings.Contains(path, string(filepath.Separator)+"Cellar"+string(filepath.Separator))
 }
 
 func instanceRunning(ctx context.Context, configPath string) bool {

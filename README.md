@@ -84,6 +84,12 @@ RouteBox 127.0.0.1:8080 ── route lookup: example.com → via seoul
 
 ## 4. Install
 
+With [Homebrew](https://brew.sh) (macOS, Linux), from the [horyu1234/tap](https://github.com/horyu1234/homebrew-tap) tap. It builds the tagged release from source, so there is no unsigned download for Gatekeeper to block:
+
+```sh
+brew install horyu1234/tap/routebox
+```
+
 With Go (see `go.mod` for the required version), install the latest release tag:
 
 ```sh
@@ -113,7 +119,7 @@ routebox service stop        # until the next login (or `routebox service start`
 routebox service uninstall   # stop and remove from login
 ```
 
-- The service runs `routebox --no-tui --config <absolute path>` with the config path and `PATH` of the shell you ran `install` from. If you use `--config` or `ROUTEBOX_CONFIG`, pass the same one to `install` and to `routebox` when you attach. Run `install` again after moving the binary or the config.
+- The service runs `routebox --no-tui --config <absolute path>` with the config path and `PATH` of the shell you ran `install` from. If you use `--config` or `ROUTEBOX_CONFIG`, pass the same one to `install` and to `routebox` when you attach. Run `install` again after moving the binary or the config. A Homebrew install is recorded by its version-independent link (`$(brew --prefix)/bin/routebox`), so after `brew upgrade` a `routebox service restart` is enough.
 - Logs: macOS writes `~/Library/Logs/RouteBox/routebox.log` (rotated at 10 MB, one `.1` backup kept); Linux uses the journal (`journalctl --user -u routebox`).
 - If RouteBox is already running in a terminal when you install, the service keeps retrying and takes over within about 10 seconds after you quit it. Each retry adds an `another RouteBox instance is already running` line to `~/Library/Logs/RouteBox/stderr.log` on macOS, so don't leave a terminal instance running alongside the service.
 - ssh runs without a terminal, so it cannot ask for a passphrase or confirm a host key. Use keys that are in an agent (macOS: `UseKeychain yes` + `AddKeysToAgent yes`, or an `IdentityAgent` such as 1Password) and trust each server's host key once (`t` in the upstream manager or `routebox ssh trust <upstream>`, see [Host keys](#host-keys)). On Linux, `systemd --user` services do not inherit `SSH_AUTH_SOCK` from your shell; see [Troubleshooting](#14-troubleshooting).
@@ -126,6 +132,8 @@ routebox service uninstall   # stop and remove from login
 3. Replace the binary the same way you installed it, naming the new tag from the [tags page](https://github.com/horyu1234/route-box/tags):
 
    ```sh
+   brew upgrade routebox
+   # or, with Go:
    go install github.com/horyu1234/route-box/cmd/routebox@v0.3.0
    # or, from a source checkout:
    git pull && make build   # then copy bin/routebox over the old binary
@@ -133,7 +141,7 @@ routebox service uninstall   # stop and remove from login
 
 4. Start `routebox` again, or run `routebox service restart` for the background service (it keeps running the old binary until restarted). Routes and upstreams are kept in the config file, and configs from older versions are migrated when loaded.
 
-`routebox --version` shows the installed version: the module version for `go install` (e.g. `v0.3.0`), or `git describe` for `make build`.
+`routebox --version` shows the installed version: the release version for Homebrew and `go install` (e.g. `v0.3.0`), or `git describe` for `make build`.
 
 ## 5. Build
 

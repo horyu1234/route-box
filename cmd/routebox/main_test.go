@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"testing"
 )
@@ -23,5 +25,45 @@ func TestResolveVersion(t *testing.T) {
 		if got := resolveVersion(c.ldflags, c.bi, c.ok); got != c.want {
 			t.Errorf("resolveVersion(%q, %v) = %q, want %q", c.ldflags, c.bi, got, c.want)
 		}
+	}
+}
+
+func TestServiceExeKeepsHomebrewLinkPath(t *testing.T) {
+	dir := t.TempDir()
+	write := func(path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := func(target, path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cellar := filepath.Join(real, "Cellar", "routebox", "0.3.0", "bin", "routebox")
+	write(cellar)
+	link(cellar, filepath.Join(real, "brew", "bin", "routebox"))
+	if got, err := serviceExe(filepath.Join(real, "brew", "bin", "routebox")); err != nil || got != filepath.Join(real, "brew", "bin", "routebox") {
+		t.Errorf("homebrew: %q %v, want the version-independent link", got, err)
+	}
+
+	plain := filepath.Join(real, "go", "bin", "routebox")
+	write(plain)
+	link(plain, filepath.Join(real, "local", "bin", "routebox"))
+	if got, err := serviceExe(filepath.Join(real, "local", "bin", "routebox")); err != nil || got != plain {
+		t.Errorf("other symlink: %q %v, want it resolved to %q", got, err, plain)
 	}
 }
